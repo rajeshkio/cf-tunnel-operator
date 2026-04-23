@@ -18,3 +18,4 @@ vendor/
 
 # OS
 .DS_Store
+deploy/secret.yaml

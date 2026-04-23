@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cf-tunnel-operator
+  namespace: cf-tunnel-operator-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cf-tunnel-operator
+  template:
+    metadata:
+      labels:
+        app: cf-tunnel-operator
+    spec:
+      serviceAccountName: cf-tunnel-operator
+      containers:
+        - name: operator
+          image: rk90229/cf-tunnel-operator:v0.1.0
+          imagePullPolicy: Always
+          env:
+            - name: CF_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cf-tunnel-operator-credentials
+                  key: CF_ACCOUNT_ID
+            - name: CF_TUNNEL_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cf-tunnel-operator-credentials
+                  key: CF_TUNNEL_ID
+            - name: CF_ZONE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cf-tunnel-operator-credentials
+                  key: CF_ZONE_ID
+            - name: CF_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cf-tunnel-operator-credentials
+                  key: CF_API_TOKEN
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
