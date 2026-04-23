@@ -20,22 +20,21 @@ type HTTPRouteReconciler struct {
 }
 
 func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	fmt.Println("Reconcile called for: ", req.NamespacedName)
+	log := ctrl.LoggerFrom(ctx)
+	log.Info("Reconcile called for", "route", req.NamespacedName)
 
 	var route gatewayv1.HTTPRoute
 	if err := r.Get(ctx, req.NamespacedName, &route); err != nil {
-		fmt.Println("HTTPRoute not found, probably deleted:", req.NamespacedName)
+		log.Info("HTTPRoute not found, probably deleted", "route", req.NamespacedName)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	//fmt.Println("Found HTTPRoute:", route.Name, "in namespace", route.Namespace)
-
 	if !route.DeletionTimestamp.IsZero() {
-		fmt.Println("HTTPRoute is being deleted:", req.NamespacedName)
+		log.Info("HTTPRoute is being deleted", "route", req.NamespacedName)
 		if containsFinalizer(route.Finalizers, finalizer) {
 			config, err := r.CF.GetTunnelConfig(ctx)
 			if err != nil {
-				fmt.Println("Failed to get tunnel config:", err)
+				log.Error(err, "Failed to get tunnel config", "route", req.NamespacedName)
 				return ctrl.Result{}, err
 			}
 
@@ -58,34 +57,34 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			})
 
 			if hostnameExists {
-				fmt.Println("Removing", hostname, "from Cloudflare tunnel...")
+				log.Info("Removing hostname from Cloudflare tunnel", "hostname", hostname)
 				if err := r.CF.PutTunnelConfig(ctx, cf.TunnelConfig{
 					Rules: newRules,
 				}); err != nil {
-					fmt.Println("Failed to update tunnel config:", err)
+					log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
 					return ctrl.Result{}, err
 				}
-				fmt.Println("Removed from Cloudflare")
+				log.Info("Removed from Cloudflare")
 			} else {
-				fmt.Println("Hostname already gone from Cloudflare, skipping PUT")
+				log.Info("Hostname already gone from Cloudflare, skipping PUT")
 			}
 
 			route.Finalizers = removeFinalizer(route.Finalizers, finalizer)
 			if err := r.Update(ctx, &route); err != nil {
-				fmt.Println("Failed to remove finalizer:", err)
+				log.Error(err, "Failed to remove finalizer", "route", req.NamespacedName)
 				return ctrl.Result{}, err
 			}
-			fmt.Println("Finalizer cleared")
+			log.Info("Finalizer cleared")
 			return ctrl.Result{}, nil
 		}
 
 	}
 
 	if !containsFinalizer(route.Finalizers, finalizer) {
-		fmt.Println("Adding finalizer to:", req.NamespacedName)
+		log.Info("Adding finalizer", "route", req.NamespacedName)
 		route.Finalizers = append(route.Finalizers, finalizer)
 		if err := r.Update(ctx, &route); err != nil {
-			fmt.Println("Failed to add finalizer:", err)
+			log.Error(err, "Failed to add finalizer", "route", req.NamespacedName)
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -93,19 +92,19 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	config, err := r.CF.GetTunnelConfig(ctx)
 	if err != nil {
-		fmt.Println("Failed to get tunnel config", err)
+		log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
 		return ctrl.Result{}, err
 	}
 
-	fmt.Println("Current tunnel has", len(config.Rules), "rules")
+	log.Info("Current tunnel rules", "count", len(config.Rules))
 
 	if len(route.Spec.Hostnames) == 0 {
-		fmt.Println("No hostnames found, skipping")
+		log.Info("No hostnames found, skipping")
 		return ctrl.Result{}, nil
 	}
 
 	if len(route.Spec.Rules) == 0 || len(route.Spec.Rules[0].BackendRefs) == 0 {
-		fmt.Println("No backend refs found, skipping")
+		log.Info("No backend refs found, skipping")
 		return ctrl.Result{}, nil
 	}
 
@@ -113,13 +112,11 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	backend := route.Spec.Rules[0].BackendRefs[0]
 	service := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", backend.Name, route.Namespace, *backend.Port)
 
-	fmt.Println("Building tunnel rule:")
-	fmt.Println("  hostname:", hostname)
-	fmt.Println("  service: ", service)
+	log.Info("Building tunnel rule", "hostname", hostname, "service", service)
 
 	for _, rule := range config.Rules {
 		if rule.Hostname == hostname && rule.Service == service {
-			fmt.Println("No changes detected, skipping:", hostname)
+			log.Info("No changes detected, skipping", "hostname", hostname)
 			return ctrl.Result{}, nil
 		}
 	}
@@ -139,15 +136,15 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	newRules = append(newRules, cf.TunnelRule{
 		Service: "http_status:404",
 	})
-	fmt.Println("Pushing", len(newRules), "rules to Cloudflare...")
+	log.Info("Pushing rules to Cloudflare", "count", len(newRules))
 	err = r.CF.PutTunnelConfig(ctx, cf.TunnelConfig{
 		Rules: newRules,
 	})
 	if err != nil {
-		fmt.Println("Failed to update tunnel config:", err)
+		log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
 		return ctrl.Result{}, err
 	}
-	fmt.Println("Done.")
+	log.Info("Done.")
 	return ctrl.Result{}, nil
 }
 

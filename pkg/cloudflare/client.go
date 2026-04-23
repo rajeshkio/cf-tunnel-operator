@@ -83,7 +83,7 @@ func (c *Client) PutTunnelConfig(ctx context.Context, config TunnelConfig) error
 	payload, err := json.Marshal(struct {
 		Config TunnelConfig `json:"config"`
 	}{Config: config})
-	fmt.Println("Sending JSON:", string(payload))
+
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
