@@ -23,13 +23,14 @@ func main() {
 	accountID := os.Getenv("CF_ACCOUNT_ID")
 	tunnelID := os.Getenv("CF_TUNNEL_ID")
 	apiToken := os.Getenv("CF_API_TOKEN")
+	zoneID := os.Getenv("CF_DNS_ZONE_ID")
 
-	if accountID == "" || tunnelID == "" || apiToken == "" {
-		fmt.Println("Error: please set CF_ACCOUNT_ID, CF_TUNNEL_ID, CF_API_TOKEN")
+	if accountID == "" || tunnelID == "" || apiToken == "" || zoneID == "" {
+		fmt.Println("Error: please set CF_ACCOUNT_ID, CF_TUNNEL_ID, CF_API_TOKEN", "CF_DNS_ZONE_ID")
 		os.Exit(1)
 	}
 
-	cfClient := cf.NewClient(accountID, tunnelID, apiToken)
+	cfClient := cf.NewClient(accountID, tunnelID, apiToken, zoneID)
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 	})

@@ -58,15 +58,28 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 			if hostnameExists {
 				log.Info("Removing hostname from Cloudflare tunnel", "hostname", hostname)
-				if err := r.CF.PutTunnelConfig(ctx, cf.TunnelConfig{
-					Rules: newRules,
-				}); err != nil {
+				if err := r.CF.PutTunnelConfig(ctx, cf.TunnelConfig{Rules: newRules}); err != nil {
 					log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
 					return ctrl.Result{}, err
 				}
-				log.Info("Removed from Cloudflare")
+				log.Info("Tunnel rule removed", "hostname", hostname)
 			} else {
-				log.Info("Hostname already gone from Cloudflare, skipping PUT")
+				log.Info("Tunnel rule already gone", "hostname", hostname)
+			}
+
+			dnsRecord, err := r.CF.ListDNSRecords(ctx, hostname)
+			if err != nil {
+				log.Error(err, "Failed to check DNS record", "hostname", hostname)
+				return ctrl.Result{Requeue: true}, nil
+			}
+			if dnsRecord != nil {
+				if err := r.CF.DeleteDNSRecord(ctx, hostname); err != nil {
+					log.Error(err, "Failed to delete DNS record", "hostname", hostname)
+					return ctrl.Result{Requeue: true}, nil
+				}
+				log.Info("DNS record deleted", "hostname", hostname)
+			} else {
+				log.Info("DNS record already gone, skipping", "hostname", hostname)
 			}
 
 			route.Finalizers = removeFinalizer(route.Finalizers, finalizer)
@@ -144,6 +157,12 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
 		return ctrl.Result{}, err
 	}
+	err = r.CF.EnsureDNSRecord(ctx, hostname)
+	if err != nil {
+		log.Error(err, "failed to add DNS record", "hostname", hostname)
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	log.Info("Done.")
 	return ctrl.Result{}, nil
 }

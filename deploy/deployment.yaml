@@ -16,7 +16,7 @@ spec:
       serviceAccountName: cf-tunnel-operator
       containers:
         - name: operator
-          image: rk90229/cf-tunnel-operator:v0.1.1
+          image: rk90229/cf-tunnel-operator:v0.1.2
           imagePullPolicy: Always
           env:
             - name: CF_ACCOUNT_ID
@@ -39,6 +39,11 @@ spec:
                 secretKeyRef:
                   name: cf-tunnel-operator-credentials
                   key: CF_API_TOKEN
+            - name: CF_DNS_ZONE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cf-tunnel-operator-credentials
+                  key: CF_DNS_ZONE_ID 
           resources:
             requests:
               cpu: 10m
