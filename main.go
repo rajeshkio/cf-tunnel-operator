@@ -26,7 +26,7 @@ func main() {
 	zoneID := os.Getenv("CF_DNS_ZONE_ID")
 
 	if accountID == "" || tunnelID == "" || apiToken == "" || zoneID == "" {
-		fmt.Println("Error: please set CF_ACCOUNT_ID, CF_TUNNEL_ID, CF_API_TOKEN, CF_DNS_ZONE_ID")
+		fmt.Println("Error: Please set CF_ACCOUNT_ID, CF_TUNNEL_ID, CF_API_TOKEN, CF_DNS_ZONE_ID")
 		os.Exit(1)
 	}
 
