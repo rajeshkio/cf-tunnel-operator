@@ -19,6 +19,7 @@ type HTTPRouteReconciler struct {
 	CF *cf.Client
 }
 
+// Reconcile handles HTTPRoute create, update, and delete events.
 func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 	log.Info("Reconcile called for", "route", req.NamespacedName)
@@ -29,6 +30,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Check if the route is being deleted and handle cleanup via finalizer
 	if !route.DeletionTimestamp.IsZero() {
 		log.Info("HTTPRoute is being deleted", "route", req.NamespacedName)
 		if containsFinalizer(route.Finalizers, finalizer) {
@@ -127,43 +129,64 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	log.Info("Building tunnel rule", "hostname", hostname, "service", service)
 
+	// Check if tunnel rule already matches desired state
+	tunnelUpToDate := false
 	for _, rule := range config.Rules {
 		if rule.Hostname == hostname && rule.Service == service {
-			log.Info("No changes detected, skipping", "hostname", hostname)
-			return ctrl.Result{}, nil
+			tunnelUpToDate = true
+			break
 		}
 	}
 
-	var newRules []cf.TunnelRule
-	for _, rule := range config.Rules {
-		if rule.Hostname != hostname && rule.Hostname != "" {
-			newRules = append(newRules, rule)
-		}
-	}
-
-	newRules = append(newRules, cf.TunnelRule{
-		Hostname: hostname,
-		Service:  service,
-	})
-
-	newRules = append(newRules, cf.TunnelRule{
-		Service: "http_status:404",
-	})
-	log.Info("Pushing rules to Cloudflare", "count", len(newRules))
-	err = r.CF.PutTunnelConfig(ctx, cf.TunnelConfig{
-		Rules: newRules,
-	})
+	// Check if DNS CNAME record already exists for this hostname
+	dnsRecord, err := r.CF.ListDNSRecords(ctx, hostname)
 	if err != nil {
-		log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
-		return ctrl.Result{}, err
+		log.Error(err, "Failed to check DNS record", "hostname", hostname)
+		return ctrl.Result{Requeue: true}, nil
 	}
+
+	dnsUpToDate := dnsRecord != nil
+
+	// Both tunnel and DNS are in sync, nothing to do
+	if dnsUpToDate && tunnelUpToDate {
+		log.Info("No changes detected, skipping", "hostname", hostname)
+		return ctrl.Result{}, nil
+	}
+
+	// Tunnel rule is missing or outdated, rebuild and push
+	if !tunnelUpToDate {
+		var newRules []cf.TunnelRule
+		for _, rule := range config.Rules {
+			if rule.Hostname != hostname && rule.Hostname != "" {
+				newRules = append(newRules, rule)
+			}
+		}
+
+		newRules = append(newRules, cf.TunnelRule{
+			Hostname: hostname,
+			Service:  service,
+		})
+
+		newRules = append(newRules, cf.TunnelRule{
+			Service: "http_status:404",
+		})
+		log.Info("Pushing rules to Cloudflare", "count", len(newRules))
+		err = r.CF.PutTunnelConfig(ctx, cf.TunnelConfig{
+			Rules: newRules,
+		})
+		if err != nil {
+			log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
+			return ctrl.Result{}, err
+		}
+	}
+	// Ensure DNS CNAME record exists, create if missing
 	err = r.CF.EnsureDNSRecord(ctx, hostname)
 	if err != nil {
 		log.Error(err, "failed to add DNS record", "hostname", hostname)
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	log.Info("Done.")
+	log.Info("DNS record ensured", "hostname", hostname)
 	return ctrl.Result{}, nil
 }
 

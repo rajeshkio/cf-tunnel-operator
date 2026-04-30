@@ -135,7 +135,6 @@ func (c *Client) EnsureDNSRecord(ctx context.Context, hostname string) error {
 		}
 		return nil
 	}
-	fmt.Printf("DNS record already exists for hostname %s", hostname)
 	return nil
 
 }
