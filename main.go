@@ -50,7 +50,7 @@ func main() {
 
 	fmt.Println("Starting operator...")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		fmt.Println("Manager failed", err)
+		fmt.Println("Manager failed with error:", err)
 		os.Exit(1)
 	}
 }
