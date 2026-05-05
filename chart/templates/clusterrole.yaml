@@ -1,0 +1,24 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.clusterrole.name }} 
+rules:
+  # Watch HTTPRoutes across all namespaces
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+
+  # Update finalizers
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes/finalizers"]
+    verbs: ["update"]
+
+  # Leader election - controller-runtime requires this
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Emit events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]

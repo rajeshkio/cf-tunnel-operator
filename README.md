@@ -101,7 +101,7 @@ kubectl create secret generic cf-tunnel-operator-credentials \
   -n cf-tunnel-operator-system \
   --from-literal=CF_ACCOUNT_ID=your-account-id \
   --from-literal=CF_TUNNEL_ID=your-tunnel-id \
-  --from-literal=CF_ZONE_ID=your-zone-id \
+  --from-literal=CF_DNS_ZONE_ID=your-dns-zone-id \
   --from-literal=CF_API_TOKEN=your-api-token
 ```
 
@@ -168,7 +168,7 @@ Run the operator locally against your cluster using your current kubeconfig:
 ```bash
 export CF_ACCOUNT_ID=your-account-id
 export CF_TUNNEL_ID=your-tunnel-id
-export CF_ZONE_ID=your-zone-id
+export CF_DNS_ZONE_ID=your-zone-id
 export CF_API_TOKEN=your-api-token
 
 go run main.go

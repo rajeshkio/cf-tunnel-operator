@@ -1,43 +1,43 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cf-tunnel-operator
-  namespace: cf-tunnel-operator-system
+  name: {{ .Release.Name }} 
+  namespace: {{ .Values.namespace }} 
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: cf-tunnel-operator
+      app: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        app: cf-tunnel-operator
+        app: {{ .Release.Name }} 
     spec:
-      serviceAccountName: cf-tunnel-operator
+      serviceAccountName: {{ .Values.serviceAccount.name }} 
       containers:
         - name: operator
-          image: rk90229/cf-tunnel-operator:main-2a6a468
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }} 
           imagePullPolicy: Always
           env:
             - name: CF_ACCOUNT_ID
               valueFrom:
                 secretKeyRef:
-                  name: cf-tunnel-operator-credentials
+                  name: {{ .Values.credentialsSecret }} 
                   key: CF_ACCOUNT_ID
             - name: CF_TUNNEL_ID
               valueFrom:
                 secretKeyRef:
-                  name: cf-tunnel-operator-credentials
+                  name: {{ .Values.credentialsSecret }} 
                   key: CF_TUNNEL_ID
             - name: CF_API_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: cf-tunnel-operator-credentials
+                  name: {{ .Values.credentialsSecret }}
                   key: CF_API_TOKEN
             - name: CF_DNS_ZONE_ID
               valueFrom:
                 secretKeyRef:
-                  name: cf-tunnel-operator-credentials
+                  name: {{ .Values.credentialsSecret }}
                   key: CF_DNS_ZONE_ID 
           resources:
             requests:
