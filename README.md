@@ -268,13 +268,12 @@ docker buildx build \
 
 - Watches all HTTPRoutes — no opt-in annotation support yet
 - Only uses the first hostname and first backend ref per HTTPRoute
-- No automatic DNS CNAME record creation yet
 - Single worker — sequential reconciliation (safe but slower under high load)
 
 ## Roadmap
 
 - [ ] Opt-in annotation (`cloudflare-tunnel/enabled: "true"`) for selective management
-- [ ] Automatic DNS CNAME record creation
 - [ ] Support for multiple hostnames per HTTPRoute
 - [ ] TLSRoute support
+- [x] Automatic DNS CNAME record creation
 - [x] Helm chart
