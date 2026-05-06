@@ -1,0 +1,33 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get","list","watch"]
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-test
+subjects:
+- kind: ServiceAccount
+  name: {{ .Release.Name }}-test
+  namespace: {{ .Values.namespace }}
