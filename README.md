@@ -60,10 +60,9 @@ When you delete an HTTPRoute, Kubernetes holds the deletion until the operator r
 - Cloudflare API token with the following permissions:
 
 | Type    | Resource          | Permission |
-|---------|-------------------|------------|
+| ------- | ----------------- | ---------- |
 | Account | Cloudflare Tunnel | Edit       |
 | Zone    | DNS               | Edit       |
-
 
 ## Project Structure
 
@@ -85,12 +84,88 @@ cf-tunnel-operator/
 │   ├── clusterrole.yaml             # RBAC — watch HTTPRoutes across all namespaces
 │   ├── clusterrolebinding.yaml      # bind ClusterRole to ServiceAccount
 │   └── deployment.yaml              # operator Deployment
+├── cf-tunnel-operator/              # Helm chart
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
 └── Dockerfile                       # multi-arch build (amd64 + arm64)
 ```
 
 ## Installation
 
-### 1. Create the credentials secret
+### Option 1: Helm (recommended)
+
+#### 1. Add the Helm repo
+
+```bash
+helm repo add cf-tunnel-operator https://rajeshkio.github.io/cf-tunnel-operator
+helm repo update
+```
+
+#### 2. Create the credentials secret
+
+> **Never pass credentials as Helm values.** Create the secret manually before installing.
+
+```bash
+kubectl create namespace cf-tunnel-operator-system
+
+kubectl create secret generic cf-tunnel-operator-credentials \
+  -n cf-tunnel-operator-system \
+  --from-literal=CF_ACCOUNT_ID=your-account-id \
+  --from-literal=CF_TUNNEL_ID=your-tunnel-id \
+  --from-literal=CF_DNS_ZONE_ID=your-dns-zone-id \
+  --from-literal=CF_API_TOKEN=your-api-token
+```
+
+#### 3. Install the chart
+
+```bash
+helm install cf-tunnel-operator cf-tunnel-operator/cf-tunnel-operator
+```
+
+#### 4. Verify
+
+```bash
+kubectl get pods -n cf-tunnel-operator-system
+kubectl logs -n cf-tunnel-operator-system deploy/cf-tunnel-operator -f
+```
+
+#### Configuration
+
+| Value                 | Default                                | Description                           |
+| --------------------- | -------------------------------------- | ------------------------------------- |
+| `image.repository`    | `docker.io/rk90229/cf-tunnel-operator` | Operator image                        |
+| `image.tag`           | `main-2a6a468`                         | Image tag                             |
+| `namespace`           | `cf-tunnel-operator-system`            | Namespace to deploy into              |
+| `credentialsSecret`   | `cf-tunnel-operator-credentials`       | Secret holding Cloudflare credentials |
+| `serviceAccount.name` | `cf-tunnel-operator`                   | ServiceAccount name                   |
+| `clusterrole.name`    | `cf-tunnel-operator`                   | ClusterRole name                      |
+
+To override values:
+
+```bash
+helm install cf-tunnel-operator cf-tunnel-operator/cf-tunnel-operator \
+  --set image.tag=main-abc1234 \
+  --set credentialsSecret=my-custom-secret
+```
+
+To upgrade:
+
+```bash
+helm upgrade cf-tunnel-operator cf-tunnel-operator/cf-tunnel-operator
+```
+
+To uninstall:
+
+```bash
+helm uninstall cf-tunnel-operator
+```
+
+---
+
+### Option 2: Raw manifests
+
+#### 1. Create the credentials secret
 
 > **Never commit this secret to git.** `deploy/secret.yaml` is in `.gitignore`.
 
@@ -105,7 +180,7 @@ kubectl create secret generic cf-tunnel-operator-credentials \
   --from-literal=CF_API_TOKEN=your-api-token
 ```
 
-### 2. Apply the manifests
+#### 2. Apply the manifests
 
 ```bash
 kubectl apply -f deploy/namespace.yaml
@@ -115,16 +190,12 @@ kubectl apply -f deploy/clusterrolebinding.yaml
 kubectl apply -f deploy/deployment.yaml
 ```
 
-### 3. Verify
+#### 3. Verify
 
 ```bash
-# check the pod is running
 kubectl get pods -n cf-tunnel-operator-system
-
-# watch the logs
 kubectl logs -n cf-tunnel-operator-system deploy/cf-tunnel-operator -f
 ```
-
 
 ## Usage
 
@@ -206,4 +277,4 @@ docker buildx build \
 - [ ] Automatic DNS CNAME record creation
 - [ ] Support for multiple hostnames per HTTPRoute
 - [ ] TLSRoute support
-- [ ] Helm chart
+- [x] Helm chart
