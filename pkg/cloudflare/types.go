@@ -1,8 +1,13 @@
 package cloudflare
 
+type OriginRequest struct {
+	NoTLSVerify bool `json:"noTLSVerify,omitempty"`
+}
+
 type TunnelRule struct {
-	Hostname string `json:"hostname,omitempty"`
-	Service  string `json:"service"`
+	Hostname      string        `json:"hostname,omitempty"`
+	Service       string        `json:"service"`
+	OriginRequest OriginRequest `json:"originRequest,omitempty"`
 }
 type TunnelConfig struct {
 	Rules []TunnelRule `json:"ingress"`

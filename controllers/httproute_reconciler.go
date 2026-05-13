@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -125,7 +126,18 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	hostname := string(route.Spec.Hostnames[0])
 	backend := route.Spec.Rules[0].BackendRefs[0]
-	service := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", backend.Name, route.Namespace, *backend.Port)
+	backendAnnotationScheme := "http"
+	if route.Annotations["cf-tunnel-operator/backend-scheme"] != "" {
+		backendAnnotationScheme = route.Annotations["cf-tunnel-operator/backend-scheme"]
+	}
+	backendAnnotationTLS := false
+	if route.Annotations["cf-tunnel-operator/no-tls-verify"] != "" {
+		backendAnnotationTLS, err = strconv.ParseBool(route.Annotations["cf-tunnel-operator/no-tls-verify"])
+		if err != nil {
+			log.Error(err, "failed to convert", route.Annotations["cf-tunnel-operator/no-tls-verify"])
+		}
+	}
+	service := fmt.Sprintf("%s://%s.%s.svc.cluster.local:%d", backendAnnotationScheme, backend.Name, route.Namespace, *backend.Port)
 
 	log.Info("Building tunnel rule", "hostname", hostname, "service", service)
 
@@ -165,6 +177,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		newRules = append(newRules, cf.TunnelRule{
 			Hostname: hostname,
 			Service:  service,
+			OriginRequest: cf.OriginRequest{
+				NoTLSVerify: backendAnnotationTLS,
+			},
 		})
 
 		newRules = append(newRules, cf.TunnelRule{
