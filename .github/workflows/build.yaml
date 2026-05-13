@@ -51,4 +51,5 @@ jobs:
           git config user.email "github-actions@github.com"
           git add deploy/deployment.yaml
           git commit -m "ci: update image to main-${{ steps.vars.outputs.sha }}"
+          git pull --rebase origin main
           git push
