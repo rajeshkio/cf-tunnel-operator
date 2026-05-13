@@ -222,6 +222,28 @@ spec:
         - name: my-app-service
           port: 8080
 ```
+### Backend Scheme and TLS
+
+By default the operator builds `http://` service URLs. For backends that speak HTTPS (self-signed certs, internal TLS), use these annotations:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: my-app
+  namespace: default
+  annotations:
+    cf-tunnel-operator/backend-scheme: "https"
+    cf-tunnel-operator/no-tls-verify: "true"
+spec:
+  ...
+```
+
+| Annotation | Values | Default | Description |
+|---|---|---|---|
+| `cf-tunnel-operator/backend-scheme` | `http`, `https` | `http` | Scheme used to connect to the backend service |
+| `cf-tunnel-operator/no-tls-verify` | `true`, `false` | `false` | Skip TLS certificate verification for the backend |
+
 
 The operator automatically adds this rule to your Cloudflare Tunnel:
 
@@ -272,7 +294,7 @@ docker buildx build \
 
 ## Roadmap
 
-- [ ] Opt-in annotation (`cloudflare-tunnel/enabled: "true"`) for selective management
+- [x] Opt-in annotation (`cloudflare-tunnel/enabled: "true"`) for selective management
 - [ ] Support for multiple hostnames per HTTPRoute
 - [ ] TLSRoute support
 - [x] Automatic DNS CNAME record creation
