@@ -48,6 +48,7 @@ func main() {
 	}
 
 	fmt.Println("List DNS records")
+	fmt.Println("testing github image build")
 	records, err := client.ListDNSRecords(ctx, "test1.rajesh-kumar.in")
 	if err != nil {
 		fmt.Println("Error:", err)
