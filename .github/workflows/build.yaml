@@ -37,8 +37,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
+          provenance: false
           tags: rk90229/cf-tunnel-operator:main-${{ steps.vars.outputs.sha }}
 
       - name: Update deployment.yaml
