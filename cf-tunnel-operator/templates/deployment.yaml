@@ -39,6 +39,10 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.credentialsSecret }}
                   key: CF_DNS_ZONE_ID 
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             requests:
               cpu: 10m

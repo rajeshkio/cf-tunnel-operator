@@ -6,10 +6,13 @@ import (
 	"slices"
 	"strconv"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	"github.com/rajeshkio/cf-tunnel-operator/api/v1alpha1"
 	cf "github.com/rajeshkio/cf-tunnel-operator/pkg/cloudflare"
 )
 
@@ -17,7 +20,17 @@ const finalizer = "cloudflare-tunnel.rajesh-kumar.in/cleanup"
 
 type HTTPRouteReconciler struct {
 	client.Client
-	CF *cf.Client
+	CF                *cf.Client
+	OperatorNamespace string
+}
+
+type TunnelStatusInput struct {
+	Hostname    string
+	Service     string
+	Scheme      string
+	NoTLSVerify bool
+	SyncStatus  string
+	Message     string
 }
 
 // Reconcile handles HTTPRoute create, update, and delete events.
@@ -162,6 +175,18 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Both tunnel and DNS are in sync, nothing to do
 	if dnsUpToDate && tunnelUpToDate {
 		log.Info("No changes detected, skipping", "hostname", hostname)
+		err = r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
+			Hostname:    hostname,
+			Service:     service,
+			NoTLSVerify: backendAnnotationTLS,
+			Scheme:      backendAnnotationScheme,
+			SyncStatus:  "Success",
+			Message:     "",
+		})
+		if err != nil {
+			log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -191,6 +216,16 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		})
 		if err != nil {
 			log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
+			if upsertErr := r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
+				Hostname:    hostname,
+				Service:     service,
+				NoTLSVerify: backendAnnotationTLS,
+				Scheme:      backendAnnotationScheme,
+				SyncStatus:  "Failed",
+				Message:     err.Error(),
+			}); upsertErr != nil {
+				log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
+			}
 			return ctrl.Result{}, err
 		}
 	}
@@ -198,10 +233,32 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	err = r.CF.EnsureDNSRecord(ctx, hostname)
 	if err != nil {
 		log.Error(err, "failed to add DNS record", "hostname", hostname)
+		if upsertErr := r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
+			Hostname:    hostname,
+			Service:     service,
+			NoTLSVerify: backendAnnotationTLS,
+			Scheme:      backendAnnotationScheme,
+			SyncStatus:  "Failed",
+			Message:     err.Error(),
+		}); upsertErr != nil {
+			log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
+		}
 		return ctrl.Result{Requeue: true}, nil
 	}
 
 	log.Info("DNS record ensured", "hostname", hostname)
+	err = r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
+		Hostname:    hostname,
+		Service:     service,
+		NoTLSVerify: backendAnnotationTLS,
+		Scheme:      backendAnnotationScheme,
+		SyncStatus:  "Success",
+		Message:     "",
+	})
+	if err != nil {
+		log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -220,4 +277,32 @@ func removeFinalizer(finalizers []string, name string) []string {
 }
 func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).For(&gatewayv1.HTTPRoute{}).Complete(r)
+}
+
+func (r *HTTPRouteReconciler) upsertTunnelStatus(ctx context.Context, route gatewayv1.HTTPRoute, tunnelStatusInput TunnelStatusInput) error {
+	log := ctrl.LoggerFrom(ctx)
+	tsResource := &v1alpha1.TunnelStatus{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s", route.Namespace, route.Name), Namespace: r.OperatorNamespace}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, tsResource, func() error {
+		tsResource.Spec.HTTPRouteName = route.Name
+		tsResource.Spec.HTTPRouteNamespace = route.Namespace
+
+		tsResource.Status.Hostname = tunnelStatusInput.Hostname
+		tsResource.Status.BackendService = tunnelStatusInput.Service
+		tsResource.Status.LastSyncTime = metav1.Now()
+		tsResource.Status.NoTLSVerify = tunnelStatusInput.NoTLSVerify
+		tsResource.Status.Scheme = tunnelStatusInput.Scheme
+		tsResource.Status.SyncStatus = tunnelStatusInput.SyncStatus
+		tsResource.Status.Message = tunnelStatusInput.Message
+		log.Info("Status before update", "lastSyncTime", tsResource.Status.LastSyncTime, "syncStatus", tsResource.Status.SyncStatus)
+		return nil
+	})
+	if err != nil {
+		log.Error(err, "Failed to upsert TunnelStatus", "route")
+		return err
+	}
+	if err := r.Status().Update(ctx, tsResource); err != nil {
+		log.Error(err, "Failed to update TunnelStatus status")
+		return err
+	}
+	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/rajeshkio/cf-tunnel-operator/api/v1alpha1"
 	"github.com/rajeshkio/cf-tunnel-operator/controllers"
 	cf "github.com/rajeshkio/cf-tunnel-operator/pkg/cloudflare"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -17,6 +18,7 @@ func main() {
 	scheme := runtime.NewScheme()
 	clientgoscheme.AddToScheme(scheme)
 	gatewayv1.Install(scheme)
+	v1alpha1.AddToScheme(scheme)
 
 	ctrl.SetLogger(zap.New())
 
@@ -24,9 +26,10 @@ func main() {
 	tunnelID := os.Getenv("CF_TUNNEL_ID")
 	apiToken := os.Getenv("CF_API_TOKEN")
 	zoneID := os.Getenv("CF_DNS_ZONE_ID")
+	operatorNamespace := os.Getenv("POD_NAMESPACE")
 
-	if accountID == "" || tunnelID == "" || apiToken == "" || zoneID == "" {
-		fmt.Println("Error: Please set CF_ACCOUNT_ID, CF_TUNNEL_ID, CF_API_TOKEN, CF_DNS_ZONE_ID")
+	if accountID == "" || tunnelID == "" || apiToken == "" || zoneID == "" || operatorNamespace == "" {
+		fmt.Println("Error: Please set CF_ACCOUNT_ID, CF_TUNNEL_ID, CF_API_TOKEN, CF_DNS_ZONE_ID", "POD_NAMESPACE")
 		os.Exit(1)
 	}
 
@@ -40,8 +43,9 @@ func main() {
 	}
 
 	reconciler := &controllers.HTTPRouteReconciler{
-		Client: mgr.GetClient(),
-		CF:     cfClient,
+		Client:            mgr.GetClient(),
+		CF:                cfClient,
+		OperatorNamespace: operatorNamespace,
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {
 		fmt.Println("Failed to setup reconciler: ", err)
