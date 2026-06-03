@@ -64,7 +64,6 @@ spec:
                 type: string
             required:
             - backendService
-            - lastSyncTime
             - message
             - notlsverify
             - scheme

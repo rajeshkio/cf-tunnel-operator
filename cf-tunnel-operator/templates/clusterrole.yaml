@@ -25,5 +25,5 @@ rules:
 
   # Custom resource self made
   - apiGroups: ["cf-tunnel-operator.rajesh-kumar.in"]
-    resources: ["tunnelstatuses"]
+    resources: ["tunnelstatuses","tunnelstatuses/status"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

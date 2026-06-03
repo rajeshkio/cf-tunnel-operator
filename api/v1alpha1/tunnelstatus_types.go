@@ -16,7 +16,7 @@ type TunnelStatus struct {
 type TunnelStatusStatus struct {
 	Hostname       string      `json:"hostname,omitempty"`
 	BackendService string      `json:"backendService"`
-	LastSyncTime   metav1.Time `json:"lastSyncTime"`
+	LastSyncTime   metav1.Time `json:"lastSyncTime,omitempty"`
 	SyncStatus     string      `json:"syncStatus"`
 	Scheme         string      `json:"scheme"`
 	NoTLSVerify    bool        `json:"notlsverify"`
