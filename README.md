@@ -78,12 +78,19 @@ cf-tunnel-operator/
 ├── cmd/
 │   └── test/
 │       └── main.go                  # local tool to test the Cloudflare client
+├── api/
+│   └── v1alpha1/
+│       ├── groupversion_info.go     # registers API group cf-tunnel-operator.rajesh-kumar.in/v1alpha1
+│       ├── tunnelstatus_types.go    # TunnelStatus CRD type definition
+│       └── zz_generated.deepcopy.go # auto-generated DeepCopy methods (do not edit)
 ├── deploy/
 │   ├── namespace.yaml               # cf-tunnel-operator-system namespace
 │   ├── serviceaccount.yaml          # ServiceAccount for the operator pod
 │   ├── clusterrole.yaml             # RBAC — watch HTTPRoutes across all namespaces
 │   ├── clusterrolebinding.yaml      # bind ClusterRole to ServiceAccount
-│   └── deployment.yaml              # operator Deployment
+│   ├── deployment.yaml              # operator Deployment
+│   └── crd/
+│       └── cf-tunnel-operator.rajesh-kumar.in_tunnelstatuses.yaml  # TunnelStatus CRD manifest
 ├── cf-tunnel-operator/              # Helm chart
 │   ├── Chart.yaml
 │   ├── values.yaml
@@ -187,6 +194,7 @@ kubectl apply -f deploy/namespace.yaml
 kubectl apply -f deploy/serviceaccount.yaml
 kubectl apply -f deploy/clusterrole.yaml
 kubectl apply -f deploy/clusterrolebinding.yaml
+kubectl apply -f deploy/crd/
 kubectl apply -f deploy/deployment.yaml
 ```
 
@@ -195,6 +203,61 @@ kubectl apply -f deploy/deployment.yaml
 ```bash
 kubectl get pods -n cf-tunnel-operator-system
 kubectl logs -n cf-tunnel-operator-system deploy/cf-tunnel-operator -f
+```
+
+## Observability: TunnelStatus
+
+The operator creates a `TunnelStatus` custom resource for every HTTPRoute it manages. These live in the operator namespace and show the current sync state without needing to open the Cloudflare dashboard or read logs.
+
+```bash
+kubectl get tunnelstatuses -n cf-tunnel-operator-system
+NAME                                          AGE
+cattle-neuvector-system-neuvector-httproute   105m
+cattle-system-rancher-httproute               105m
+mlops-mlflow                                  105m
+```
+
+Inspect any one for the full picture:
+
+```bash
+kubectl get tunnelstatuses mlops-mlflow -n cf-tunnel-operator-system -o yaml
+```
+
+```yaml
+apiVersion: cf-tunnel-operator.rajesh-kumar.in/v1alpha1
+kind: TunnelStatus
+metadata:
+  name: mlops-mlflow
+  namespace: cf-tunnel-operator-system
+spec:
+  httpRouteName: mlflow
+  httpRouteNamespace: mlops
+status:
+  backendService: http://mlflow.mlops.svc.cluster.local:5000
+  hostname: mlflow.rajesh-kumar.in
+  lastSyncTime: "2026-06-03T15:15:16Z"
+  message: ""
+  notlsverify: false
+  scheme: http
+  syncStatus: Success
+```
+
+| Field | Description |
+|---|---|
+| `hostname` | The public hostname registered in Cloudflare |
+| `backendService` | The internal service URL pushed to the tunnel |
+| `scheme` | `http` or `https` depending on the annotation |
+| `notlsverify` | Whether TLS verification is disabled for the backend |
+| `syncStatus` | `Success` or `Failed` |
+| `message` | Error detail if `syncStatus` is `Failed` |
+| `lastSyncTime` | When the last reconcile ran |
+
+If `syncStatus` is `Failed`, the `message` field contains the error from the Cloudflare API or DNS call. Fix the underlying issue and the operator retries automatically.
+
+To apply the CRD to a cluster that does not have it yet:
+
+```bash
+kubectl apply -f deploy/crd/cf-tunnel-operator.rajesh-kumar.in_tunnelstatuses.yaml
 ```
 
 ## Usage
@@ -263,9 +326,12 @@ export CF_ACCOUNT_ID=your-account-id
 export CF_TUNNEL_ID=your-tunnel-id
 export CF_DNS_ZONE_ID=your-zone-id
 export CF_API_TOKEN=your-api-token
+export POD_NAMESPACE=cf-tunnel-operator-system
 
 go run main.go
 ```
+
+`POD_NAMESPACE` is injected automatically via the Kubernetes Downward API when running in the cluster. For local runs you set it manually — it controls which namespace TunnelStatus resources are created in.
 
 To test the Cloudflare API client in isolation:
 
