@@ -7,3 +7,11 @@ serviceAccount:
   name: cf-tunnel-operator
 clusterrole:
   name: cf-tunnel-operator
+resources:
+  requests:
+    cpu: 5m
+    memory: 20Mi
+  limits:
+    cpu: 50m
+    memory: 64Mi
+securityContext: {}
