@@ -28,3 +28,28 @@ type DNSRecordRequests struct {
 	Content string `json:"content"`
 	Proxied bool   `json:"proxied"`
 }
+
+type AccessApplication struct {
+	ID          string              `json:"id,omitempty"`
+	Name        string              `json:"name"`
+	Domain      string              `json:"domain"`
+	Type        string              `json:"type"`
+	Destination []AccessDestination `json:"destinations"`
+}
+
+type AccessDestination struct {
+	Type string `json:"type"`
+	URI  string `json:"uri"`
+}
+
+type AccessEmailRule struct {
+	Email struct {
+		Email string `json:"email"`
+	} `json:"email"`
+}
+
+type PolicyLists struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Decision string `json:"decision"`
+}

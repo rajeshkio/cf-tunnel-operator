@@ -62,4 +62,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	fmt.Println("Listing access application")
+	app, err := client.ListAccessApplications(ctx)
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+
+	for _, app := range app {
+		fmt.Println(app.Domain)
+	}
+
+	// fmt.Println("Creating access application")
+	// appid, err := client.EnsureAccessApplication(ctx, "test3.rajesh-kumar.in")
+	// if err != nil {
+	// 	fmt.Println("Error:", err)
+	// }
+	// fmt.Println(appid)
+
+	fmt.Println("Listing policies")
+	policies, err := client.ListAccessPolicies(ctx, "bf48fd71-9143-4bcf-b785-800e86b5bbaa")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+	fmt.Println(policies)
+	for _, policy := range policies {
+		fmt.Println(policy.Decision)
+	}
 }

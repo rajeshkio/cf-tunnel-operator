@@ -82,6 +82,74 @@ func (c *Client) ListDNSRecords(ctx context.Context, hostname string) (*DNSRecor
 	return nil, nil
 }
 
+func (c *Client) ListAccessApplications(ctx context.Context) ([]AccessApplication, error) {
+	url := fmt.Sprintf("%s/accounts/%s/access/apps", apiBase, c.accountID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list access apps records: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Get access app records %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+
+	var result struct {
+		apiResponse
+		Records []AccessApplication `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parsing response: %w", err)
+	}
+
+	if !result.Success {
+		return nil, fmt.Errorf("cloudflare API error: %v", result.Errors)
+	}
+	return result.Records, nil
+}
+
+func (c *Client) ListAccessPolicies(ctx context.Context, appId string) ([]PolicyLists, error) {
+	url := fmt.Sprintf("%s/accounts/%s/access/apps/%s/policies", apiBase, c.accountID, appId)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list policies lists: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Lisst policies %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+
+	var result struct {
+		apiResponse
+		Records []PolicyLists `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parsing response: %w", err)
+	}
+
+	if !result.Success {
+		return nil, fmt.Errorf("cloudflare API error: %v", result.Errors)
+	}
+	return result.Records, nil
+}
+
 func (c *Client) CreateDNSRecord(ctx context.Context, hostname string) error {
 	url := fmt.Sprintf("%s/zones/%s/dns_records", apiBase, c.zoneID)
 	payload := &DNSRecordRequests{
@@ -124,6 +192,57 @@ func (c *Client) CreateDNSRecord(ctx context.Context, hostname string) error {
 	}
 	return nil
 }
+
+func (c *Client) CreateAccessApplication(ctx context.Context, name string) (string, error) {
+	url := fmt.Sprintf("%s/accounts/%s/access/apps", apiBase, c.accountID)
+	payload := &AccessApplication{
+		Name:   name,
+		Domain: name,
+		Type:   "self_hosted",
+		Destination: []AccessDestination{
+			{
+				Type: "public",
+				URI:  name,
+			},
+		},
+	}
+
+	payloadByte, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("building application access request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payloadByte))
+	if err != nil {
+		return "", fmt.Errorf("building DNS record request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("POST Access Application creation: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading response: %w", err)
+	}
+
+	var apiResult struct {
+		apiResponse
+		Result AccessApplication `json:"result"`
+	}
+	//var apiResponse apiResponse
+	err = json.Unmarshal(body, &apiResult)
+	if err != nil {
+		return "", fmt.Errorf("Failed to unmarshal the api response: %w", err)
+	}
+	//fmt.Println(apiResult.Result)
+	return apiResult.Result.ID, nil
+}
+
 func (c *Client) EnsureDNSRecord(ctx context.Context, hostname string) error {
 	dnsRecord, err := c.ListDNSRecords(ctx, hostname)
 	if err != nil {
@@ -137,6 +256,26 @@ func (c *Client) EnsureDNSRecord(ctx context.Context, hostname string) error {
 	}
 	return nil
 
+}
+
+func (c *Client) EnsureAccessApplication(ctx context.Context, hostname string) (string, error) {
+	apps, err := c.ListAccessApplications(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to list access application: %w", err)
+	}
+
+	for _, app := range apps {
+		if app.Domain == hostname {
+			fmt.Printf("app already exists")
+			return app.ID, nil
+		}
+	}
+
+	appId, err := c.CreateAccessApplication(ctx, hostname)
+	if err != nil {
+		return "", fmt.Errorf("Faailed to create Access Application: %w", err)
+	}
+	return appId, nil
 }
 
 func (c *Client) DeleteDNSRecord(ctx context.Context, hostname string) error {
