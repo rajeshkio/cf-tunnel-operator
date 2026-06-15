@@ -48,8 +48,14 @@ type AccessEmailRule struct {
 	} `json:"email"`
 }
 
-type PolicyLists struct {
+type AccessPolicyLists struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Decision string `json:"decision"`
+}
+
+type AccessPolicyRequest struct {
+	Include  []AccessEmailRule `json:"include"`
+	Decision string            `json:"decision"`
+	Name     string            `json:"name"`
 }

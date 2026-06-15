@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -94,6 +95,12 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					log.Error(err, "Failed to delete DNS record", "hostname", hostname)
 					return ctrl.Result{Requeue: true}, nil
 				}
+				if route.Annotations["cf-tunnel-operator/zero-trust"] == "true" {
+					if err := r.CF.DeleteAccessApplication(ctx, hostname); err != nil {
+						log.Error(err, "Failed to delete access application", "hostname", hostname)
+						return ctrl.Result{Requeue: true}, nil
+					}
+				}
 				log.Info("DNS record deleted", "hostname", hostname)
 			} else {
 				log.Info("DNS record already gone, skipping", "hostname", hostname)
@@ -175,6 +182,11 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Both tunnel and DNS are in sync, nothing to do
 	if dnsUpToDate && tunnelUpToDate {
+		err = r.ensureZeroTrust(ctx, route, hostname)
+		if err != nil {
+			log.Error(err, "failed to add", err)
+			return ctrl.Result{}, err
+		}
 		log.Info("No changes detected, skipping", "hostname", hostname)
 		err = r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
 			Hostname:     hostname,
@@ -251,6 +263,12 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	log.Info("DNS record ensured", "hostname", hostname)
+	err = r.ensureZeroTrust(ctx, route, hostname)
+	if err != nil {
+		log.Error(err, "failed to add", err)
+		return ctrl.Result{}, err
+	}
+
 	err = r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
 		Hostname:     hostname,
 		Service:      service,
@@ -260,6 +278,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		SyncStatus:   "Success",
 		Message:      "",
 	})
+
 	if err != nil {
 		log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
 		return ctrl.Result{}, err
@@ -267,6 +286,42 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
+func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gatewayv1.HTTPRoute, hostname string) error {
+	zeroTrustAnnotation := false
+	var err error
+	log := ctrl.LoggerFrom(ctx)
+	if route.Annotations["cf-tunnel-operator/zero-trust"] != "" {
+		zeroTrustAnnotation, err = strconv.ParseBool(route.Annotations["cf-tunnel-operator/zero-trust"])
+		if err != nil {
+			log.Error(err, "failed to convert", route.Annotations["cf-tunnel-operator/zero-trust"])
+			return err
+		}
+	}
+	var zeroTrustEmails []string
+	if zeroTrustAnnotation {
+		if route.Annotations["cf-tunnel-operator/zero-trust-emails"] != "" {
+			emailsRaw := route.Annotations["cf-tunnel-operator/zero-trust-emails"]
+			rawEmails := strings.Split(emailsRaw, ",")
+			for _, email := range rawEmails {
+				zeroTrustEmails = append(zeroTrustEmails, strings.TrimSpace(email))
+			}
+		}
+		for _, email := range zeroTrustEmails {
+			log.Info("zero trust emails are", "value", email)
+		}
+		appId, err := r.CF.EnsureAccessApplication(ctx, hostname)
+		if err != nil {
+			log.Error(err, "failed to create Access application", hostname)
+			return err
+		}
+		err = r.CF.EnsureAccessPolicy(ctx, appId, hostname, "allow", zeroTrustEmails)
+		if err != nil {
+			log.Error(err, "failed to create access policy:", appId)
+			return err
+		}
+	}
+	return nil
+}
 func containsFinalizer(finalizers []string, name string) bool {
 	return slices.Contains(finalizers, name)
 }

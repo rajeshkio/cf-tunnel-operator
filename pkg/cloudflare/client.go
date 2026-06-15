@@ -116,7 +116,7 @@ func (c *Client) ListAccessApplications(ctx context.Context) ([]AccessApplicatio
 	return result.Records, nil
 }
 
-func (c *Client) ListAccessPolicies(ctx context.Context, appId string) ([]PolicyLists, error) {
+func (c *Client) ListAccessPolicies(ctx context.Context, appId string) ([]AccessPolicyLists, error) {
 	url := fmt.Sprintf("%s/accounts/%s/access/apps/%s/policies", apiBase, c.accountID, appId)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -137,7 +137,7 @@ func (c *Client) ListAccessPolicies(ctx context.Context, appId string) ([]Policy
 
 	var result struct {
 		apiResponse
-		Records []PolicyLists `json:"result"`
+		Records []AccessPolicyLists `json:"result"`
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -239,6 +239,65 @@ func (c *Client) CreateAccessApplication(ctx context.Context, name string) (stri
 	if err != nil {
 		return "", fmt.Errorf("Failed to unmarshal the api response: %w", err)
 	}
+
+	if !apiResult.Success {
+		return "", fmt.Errorf("cloudflare API error: %v", apiResult.Errors)
+	}
+	//fmt.Println(apiResult.Result)
+	return apiResult.Result.ID, nil
+}
+
+func (c *Client) CreateAccessPolicies(ctx context.Context, appId, hostname, decision string, emails []string) (string, error) {
+	url := fmt.Sprintf("%s/accounts/%s/access/apps/%s/policies", apiBase, c.accountID, appId)
+	var AccessEmails []AccessEmailRule
+	for _, email := range emails {
+		rule := AccessEmailRule{}
+		rule.Email.Email = email
+		AccessEmails = append(AccessEmails, rule)
+	}
+	payload := &AccessPolicyRequest{
+		Name:     "cto-" + hostname,
+		Decision: decision,
+		Include:  AccessEmails,
+	}
+
+	payloadByte, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("building access policy request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payloadByte))
+	if err != nil {
+		return "", fmt.Errorf("creating http request for access policy: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("POST access policy creation: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading response: %w", err)
+	}
+
+	var apiResult struct {
+		apiResponse
+		Result AccessPolicyLists `json:"result"`
+	}
+
+	//var apiResponse apiResponse
+	err = json.Unmarshal(body, &apiResult)
+	if err != nil {
+		return "", fmt.Errorf("Failed to unmarshal the api response: %w", err)
+	}
+
+	if !apiResult.Success {
+		return "", fmt.Errorf("cloudflare API error: %v", apiResult.Errors)
+	}
 	//fmt.Println(apiResult.Result)
 	return apiResult.Result.ID, nil
 }
@@ -266,16 +325,92 @@ func (c *Client) EnsureAccessApplication(ctx context.Context, hostname string) (
 
 	for _, app := range apps {
 		if app.Domain == hostname {
-			fmt.Printf("app already exists")
 			return app.ID, nil
 		}
 	}
 
 	appId, err := c.CreateAccessApplication(ctx, hostname)
 	if err != nil {
-		return "", fmt.Errorf("Faailed to create Access Application: %w", err)
+		return "", fmt.Errorf("Failed to create Access Application: %w", err)
 	}
 	return appId, nil
+}
+
+func (c *Client) UpdateAccessPolicies(ctx context.Context, appId, hostname, decision, policyId string, emails []string) error {
+	url := fmt.Sprintf("%s/accounts/%s/access/apps/%s/policies/%s", apiBase, c.accountID, appId, policyId)
+	var AccessEmails []AccessEmailRule
+	for _, email := range emails {
+		rule := AccessEmailRule{}
+		rule.Email.Email = email
+		AccessEmails = append(AccessEmails, rule)
+	}
+	payload := &AccessPolicyRequest{
+		Name:     "cto-" + hostname,
+		Decision: decision,
+		Include:  AccessEmails,
+	}
+
+	payloadByte, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("building access policy request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(payloadByte))
+	if err != nil {
+		return fmt.Errorf("creating http request for access policy: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("PUT access policy update: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading response: %w", err)
+	}
+
+	var apiResult struct {
+		apiResponse
+		Result AccessPolicyLists `json:"result"`
+	}
+
+	//var apiResponse apiResponse
+	err = json.Unmarshal(body, &apiResult)
+	if err != nil {
+		return fmt.Errorf("Failed to unmarshal the api response: %w", err)
+	}
+
+	if !apiResult.Success {
+		return fmt.Errorf("cloudflare API error: %v", apiResult.Errors)
+	}
+	//fmt.Println(apiResult.Result)
+	return nil
+}
+
+func (c *Client) EnsureAccessPolicy(ctx context.Context, appId, hostname, decision string, emails []string) error {
+	policies, err := c.ListAccessPolicies(ctx, appId)
+	if err != nil {
+		return fmt.Errorf("failed to list access policies: %w", err)
+	}
+	for _, policy := range policies {
+		if policy.Name == "cto-"+hostname {
+			err = c.UpdateAccessPolicies(ctx, appId, hostname, decision, policy.ID, emails)
+			if err != nil {
+				return fmt.Errorf("failed to update the policy %s: %w", policy.ID, err)
+			}
+			return nil
+		}
+	}
+
+	_, err = c.CreateAccessPolicies(ctx, appId, hostname, decision, emails)
+	if err != nil {
+		return fmt.Errorf("Failed to create Access Policy: %w", err)
+	}
+	return nil
 }
 
 func (c *Client) DeleteDNSRecord(ctx context.Context, hostname string) error {
@@ -304,6 +439,35 @@ func (c *Client) DeleteDNSRecord(ctx context.Context, hostname string) error {
 
 	return nil
 
+}
+
+func (c *Client) DeleteAccessApplication(ctx context.Context, hostname string) error {
+	appIds, err := c.ListAccessApplications(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list Access Application for hostname %s: %w", hostname, err)
+	}
+
+	for _, appId := range appIds {
+		if appId.Domain == hostname {
+			url := fmt.Sprintf("%s/accounts/%s/access/apps/%s", apiBase, c.accountID, appId.ID)
+			req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+			if err != nil {
+				return fmt.Errorf("failed to delete: %w", err)
+			}
+
+			req.Header.Set("Authorization", "Bearer "+c.apiToken)
+			resp, err := c.http.Do(req)
+			if err != nil {
+				return fmt.Errorf("DELETE Access Application: %w", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("delete failed with status: %d", resp.StatusCode)
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 func (c *Client) GetTunnelConfig(ctx context.Context) (*TunnelConfig, error) {
