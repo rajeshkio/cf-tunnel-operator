@@ -42,15 +42,17 @@ jobs:
           provenance: false
           tags: rk90229/cf-tunnel-operator:main-${{ steps.vars.outputs.sha }}
 
-      - name: Update deployment.yaml
+      - name: Update image tags
         run: |
           sed -i "s|image: rk90229/cf-tunnel-operator:.*|image: rk90229/cf-tunnel-operator:main-${{ steps.vars.outputs.sha }}|" deploy/deployment.yaml
+          sed -i "s|tag:.*|tag: main-${{ steps.vars.outputs.sha }}|" cf-tunnel-operator/values.yaml
 
-      - name: Commit updated deployment.yaml
+      - name: Commit updated image tags
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add deploy/deployment.yaml
+          git add cf-tunnel-operator/values.yaml
           git commit -m "ci: update image to main-${{ steps.vars.outputs.sha }}"
           git pull --rebase origin main
           git push
