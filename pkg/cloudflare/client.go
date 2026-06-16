@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -313,6 +314,7 @@ func (c *Client) EnsureDNSRecord(ctx context.Context, hostname string) error {
 		}
 		return nil
 	}
+	slog.Info("DNS record created", "hostname", hostname)
 	return nil
 
 }
@@ -325,6 +327,7 @@ func (c *Client) EnsureAccessApplication(ctx context.Context, hostname string) (
 
 	for _, app := range apps {
 		if app.Domain == hostname {
+			slog.Info("Access application already exists", "hostname", hostname, "appID", app.ID)
 			return app.ID, nil
 		}
 	}
@@ -333,6 +336,7 @@ func (c *Client) EnsureAccessApplication(ctx context.Context, hostname string) (
 	if err != nil {
 		return "", fmt.Errorf("Failed to create Access Application: %w", err)
 	}
+	slog.Info("access application created", "hostname", hostname, "appID", appId)
 	return appId, nil
 }
 
@@ -402,14 +406,16 @@ func (c *Client) EnsureAccessPolicy(ctx context.Context, appId, hostname, decisi
 			if err != nil {
 				return fmt.Errorf("failed to update the policy %s: %w", policy.ID, err)
 			}
+			slog.Info("access policy updated", "hostname", hostname, "appID", appId, "policyID", policy.ID)
 			return nil
 		}
 	}
 
-	_, err = c.CreateAccessPolicies(ctx, appId, hostname, decision, emails)
+	policyId, err := c.CreateAccessPolicies(ctx, appId, hostname, decision, emails)
 	if err != nil {
 		return fmt.Errorf("Failed to create Access Policy: %w", err)
 	}
+	slog.Info("access policy created", "hostname", hostname, "appID", appId, "policyID", policyId)
 	return nil
 }
 
@@ -433,7 +439,7 @@ func (c *Client) DeleteDNSRecord(ctx context.Context, hostname string) error {
 		return fmt.Errorf("DELETE DNS records: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("delete failed with status: %d", resp.StatusCode)
 	}
 
@@ -461,7 +467,8 @@ func (c *Client) DeleteAccessApplication(ctx context.Context, hostname string) e
 				return fmt.Errorf("DELETE Access Application: %w", err)
 			}
 			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
+			// Accept any 2xx as success, as cloudflare returns 202
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 				return fmt.Errorf("delete failed with status: %d", resp.StatusCode)
 			}
 			return nil

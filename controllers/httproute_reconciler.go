@@ -95,17 +95,18 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					log.Error(err, "Failed to delete DNS record", "hostname", hostname)
 					return ctrl.Result{Requeue: true}, nil
 				}
-				if route.Annotations["cf-tunnel-operator/zero-trust"] == "true" {
-					if err := r.CF.DeleteAccessApplication(ctx, hostname); err != nil {
-						log.Error(err, "Failed to delete access application", "hostname", hostname)
-						return ctrl.Result{Requeue: true}, nil
-					}
-				}
 				log.Info("DNS record deleted", "hostname", hostname)
 			} else {
 				log.Info("DNS record already gone, skipping", "hostname", hostname)
 			}
 
+			if route.Annotations["cf-tunnel-operator/zero-trust"] == "true" {
+				if err := r.CF.DeleteAccessApplication(ctx, hostname); err != nil {
+					log.Error(err, "Failed to delete access application", "hostname", hostname)
+					return ctrl.Result{Requeue: true}, nil
+				}
+				log.Info("Access Application Deleted", "hostname", hostname)
+			}
 			route.Finalizers = removeFinalizer(route.Finalizers, finalizer)
 			if err := r.Update(ctx, &route); err != nil {
 				log.Error(err, "Failed to remove finalizer", "route", req.NamespacedName)
@@ -305,9 +306,6 @@ func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gateway
 			for _, email := range rawEmails {
 				zeroTrustEmails = append(zeroTrustEmails, strings.TrimSpace(email))
 			}
-		}
-		for _, email := range zeroTrustEmails {
-			log.Info("zero trust emails are", "value", email)
 		}
 		appId, err := r.CF.EnsureAccessApplication(ctx, hostname)
 		if err != nil {
