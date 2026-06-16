@@ -208,7 +208,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if result, ok := handleRateLimit(err); ok {
 				return result, nil
 			}
-			log.Error(err, "failed to add", err)
+			log.Error(err, "failed to add zero trust")
 			return ctrl.Result{}, err
 		}
 		log.Info("No changes detected, skipping", "hostname", hostname)
@@ -300,7 +300,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if result, ok := handleRateLimit(err); ok {
 			return result, nil
 		}
-		log.Error(err, "failed to add", err)
+		log.Error(err, "failed to add zero trust")
 		return ctrl.Result{}, err
 	}
 
@@ -326,6 +326,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gatewayv1.HTTPRoute, hostname string) (string, string, error) {
 	zeroTrustAnnotation := false
 	var err error
+
 	log := ctrl.LoggerFrom(ctx)
 	if route.Annotations["cf-tunnel-operator/zero-trust"] != "" {
 		zeroTrustAnnotation, err = strconv.ParseBool(route.Annotations["cf-tunnel-operator/zero-trust"])
@@ -337,13 +338,26 @@ func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gateway
 	var zeroTrustEmails []string
 	var appId string
 	var policyId string
+	var invalidEmails []string
 	if zeroTrustAnnotation {
 		if route.Annotations["cf-tunnel-operator/zero-trust-emails"] != "" {
 			emailsRaw := route.Annotations["cf-tunnel-operator/zero-trust-emails"]
 			rawEmails := strings.Split(emailsRaw, ",")
 			for _, email := range rawEmails {
-				zeroTrustEmails = append(zeroTrustEmails, strings.TrimSpace(email))
+				trimmedEmail := strings.TrimSpace(email)
+				idx := strings.Index(trimmedEmail, "@")
+				if idx <= 0 || idx == len(trimmedEmail)-1 {
+					invalidEmails = append(invalidEmails, trimmedEmail)
+				} else {
+					zeroTrustEmails = append(zeroTrustEmails, trimmedEmail)
+				}
 			}
+			if len(invalidEmails) > 0 {
+				return "", "", fmt.Errorf("email addresses %v are invalid", invalidEmails)
+			}
+		} else {
+			// zero-trust is true but no emails provided
+			return "", "", fmt.Errorf("zero-trust is enabled but zero-trust-emails annotation is missing or empty")
 		}
 		appId, err = r.CF.EnsureAccessApplication(ctx, hostname)
 		if err != nil {
