@@ -2,10 +2,12 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -35,6 +37,13 @@ type TunnelStatusInput struct {
 	LastSyncTime metav1.Time
 }
 
+func handleRateLimit(err error) (ctrl.Result, bool) {
+	if errors.Is(err, cf.ErrRateLimited) {
+		return ctrl.Result{RequeueAfter: 20 * time.Second}, true
+	}
+	return ctrl.Result{}, false
+}
+
 // Reconcile handles HTTPRoute create, update, and delete events.
 func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
@@ -52,6 +61,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if containsFinalizer(route.Finalizers, finalizer) {
 			config, err := r.CF.GetTunnelConfig(ctx)
 			if err != nil {
+				if result, ok := handleRateLimit(err); ok {
+					return result, nil
+				}
 				log.Error(err, "Failed to get tunnel config", "route", req.NamespacedName)
 				return ctrl.Result{}, err
 			}
@@ -77,6 +89,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if hostnameExists {
 				log.Info("Removing hostname from Cloudflare tunnel", "hostname", hostname)
 				if err := r.CF.PutTunnelConfig(ctx, cf.TunnelConfig{Rules: newRules}); err != nil {
+					if result, ok := handleRateLimit(err); ok {
+						return result, nil
+					}
 					log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
 					return ctrl.Result{}, err
 				}
@@ -87,11 +102,17 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 			dnsRecord, err := r.CF.ListDNSRecords(ctx, hostname)
 			if err != nil {
+				if result, ok := handleRateLimit(err); ok {
+					return result, nil
+				}
 				log.Error(err, "Failed to check DNS record", "hostname", hostname)
 				return ctrl.Result{Requeue: true}, nil
 			}
 			if dnsRecord != nil {
 				if err := r.CF.DeleteDNSRecord(ctx, hostname); err != nil {
+					if result, ok := handleRateLimit(err); ok {
+						return result, nil
+					}
 					log.Error(err, "Failed to delete DNS record", "hostname", hostname)
 					return ctrl.Result{Requeue: true}, nil
 				}
@@ -102,6 +123,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 			if route.Annotations["cf-tunnel-operator/zero-trust"] == "true" {
 				if err := r.CF.DeleteAccessApplication(ctx, hostname); err != nil {
+					if result, ok := handleRateLimit(err); ok {
+						return result, nil
+					}
 					log.Error(err, "Failed to delete access application", "hostname", hostname)
 					return ctrl.Result{Requeue: true}, nil
 				}
@@ -130,6 +154,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	config, err := r.CF.GetTunnelConfig(ctx)
 	if err != nil {
+		if result, ok := handleRateLimit(err); ok {
+			return result, nil
+		}
 		log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
 		return ctrl.Result{}, err
 	}
@@ -175,6 +202,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Check if DNS CNAME record already exists for this hostname
 	dnsRecord, err := r.CF.ListDNSRecords(ctx, hostname)
 	if err != nil {
+		if result, ok := handleRateLimit(err); ok {
+			return result, nil
+		}
 		log.Error(err, "Failed to check DNS record", "hostname", hostname)
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -185,6 +215,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if dnsUpToDate && tunnelUpToDate {
 		err = r.ensureZeroTrust(ctx, route, hostname)
 		if err != nil {
+			if result, ok := handleRateLimit(err); ok {
+				return result, nil
+			}
 			log.Error(err, "failed to add", err)
 			return ctrl.Result{}, err
 		}
@@ -230,6 +263,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			Rules: newRules,
 		})
 		if err != nil {
+			if result, ok := handleRateLimit(err); ok {
+				return result, nil
+			}
 			log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
 			if upsertErr := r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
 				Hostname:     hostname,
@@ -248,6 +284,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Ensure DNS CNAME record exists, create if missing
 	err = r.CF.EnsureDNSRecord(ctx, hostname)
 	if err != nil {
+		if result, ok := handleRateLimit(err); ok {
+			return result, nil
+		}
 		log.Error(err, "failed to add DNS record", "hostname", hostname)
 		if upsertErr := r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
 			Hostname:     hostname,
@@ -266,6 +305,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	log.Info("DNS record ensured", "hostname", hostname)
 	err = r.ensureZeroTrust(ctx, route, hostname)
 	if err != nil {
+		if result, ok := handleRateLimit(err); ok {
+			return result, nil
+		}
 		log.Error(err, "failed to add", err)
 		return ctrl.Result{}, err
 	}

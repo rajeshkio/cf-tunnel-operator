@@ -13,6 +13,8 @@ import (
 
 const apiBase = "https://api.cloudflare.com/client/v4"
 
+var ErrRateLimited = fmt.Errorf("cloudflare rate limited")
+
 type Client struct {
 	accountID string
 	tunnelID  string
@@ -32,11 +34,22 @@ func NewClient(accountID, tunnelID, apiToken, zoneID string) *Client {
 }
 
 type apiResponse struct {
-	Success bool `json:"success"`
-	Errors  []struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"errors"`
+	Success bool       `json:"success"`
+	Errors  []APIError `json:"errors"`
+}
+
+type APIError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func isRateLimited(errs []APIError) bool {
+	for _, err := range errs {
+		if err.Code == 10429 {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) ListDNSRecords(ctx context.Context, hostname string) (*DNSRecords, error) {
@@ -73,6 +86,9 @@ func (c *Client) ListDNSRecords(ctx context.Context, hostname string) (*DNSRecor
 	}
 
 	if !result.Success {
+		if isRateLimited(result.Errors) {
+			return nil, ErrRateLimited
+		}
 		return nil, fmt.Errorf("cloudflare API error: %v", result.Errors)
 	}
 	for i, record := range result.Records {
@@ -112,6 +128,9 @@ func (c *Client) ListAccessApplications(ctx context.Context) ([]AccessApplicatio
 	}
 
 	if !result.Success {
+		if isRateLimited(result.Errors) {
+			return nil, ErrRateLimited
+		}
 		return nil, fmt.Errorf("cloudflare API error: %v", result.Errors)
 	}
 	return result.Records, nil
@@ -146,6 +165,9 @@ func (c *Client) ListAccessPolicies(ctx context.Context, appId string) ([]Access
 	}
 
 	if !result.Success {
+		if isRateLimited(result.Errors) {
+			return nil, ErrRateLimited
+		}
 		return nil, fmt.Errorf("cloudflare API error: %v", result.Errors)
 	}
 	return result.Records, nil
@@ -189,6 +211,9 @@ func (c *Client) CreateDNSRecord(ctx context.Context, hostname string) error {
 	}
 
 	if !result.Success {
+		if isRateLimited(result.Errors) {
+			return ErrRateLimited
+		}
 		return fmt.Errorf("cloudflare API error: %v", result.Errors)
 	}
 	return nil
@@ -242,6 +267,9 @@ func (c *Client) CreateAccessApplication(ctx context.Context, name string) (stri
 	}
 
 	if !apiResult.Success {
+		if isRateLimited(apiResult.Errors) {
+			return "", ErrRateLimited
+		}
 		return "", fmt.Errorf("cloudflare API error: %v", apiResult.Errors)
 	}
 	//fmt.Println(apiResult.Result)
@@ -297,6 +325,9 @@ func (c *Client) CreateAccessPolicies(ctx context.Context, appId, hostname, deci
 	}
 
 	if !apiResult.Success {
+		if isRateLimited(apiResult.Errors) {
+			return "", ErrRateLimited
+		}
 		return "", fmt.Errorf("cloudflare API error: %v", apiResult.Errors)
 	}
 	//fmt.Println(apiResult.Result)
@@ -312,9 +343,10 @@ func (c *Client) EnsureDNSRecord(ctx context.Context, hostname string) error {
 		if err := c.CreateDNSRecord(ctx, hostname); err != nil {
 			return fmt.Errorf("failed to create DNS record: %w", err)
 		}
+		slog.Info("DNS record created", "hostname", hostname)
 		return nil
 	}
-	slog.Info("DNS record created", "hostname", hostname)
+	slog.Info("DNS record already exists", "hostname", hostname)
 	return nil
 
 }
@@ -389,6 +421,9 @@ func (c *Client) UpdateAccessPolicies(ctx context.Context, appId, hostname, deci
 	}
 
 	if !apiResult.Success {
+		if isRateLimited(apiResult.Errors) {
+			return ErrRateLimited
+		}
 		return fmt.Errorf("cloudflare API error: %v", apiResult.Errors)
 	}
 	//fmt.Println(apiResult.Result)
@@ -512,6 +547,9 @@ func (c *Client) GetTunnelConfig(ctx context.Context) (*TunnelConfig, error) {
 	}
 
 	if !result.Success {
+		if isRateLimited(result.Errors) {
+			return nil, ErrRateLimited
+		}
 		return nil, fmt.Errorf("cloudflare API error: %v", result.Errors)
 	}
 
@@ -553,8 +591,10 @@ func (c *Client) PutTunnelConfig(ctx context.Context, config TunnelConfig) error
 	}
 
 	if !result.Success {
+		if isRateLimited(result.Errors) {
+			return ErrRateLimited
+		}
 		return fmt.Errorf("cloudflare API error: %v", result.Errors)
 	}
-
 	return nil
 }
