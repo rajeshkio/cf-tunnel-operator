@@ -47,6 +47,8 @@ spec:
             type: object
           status:
             properties:
+              appid:
+                type: string
               backendService:
                 type: string
               hostname:
@@ -58,6 +60,8 @@ spec:
                 type: string
               notlsverify:
                 type: boolean
+              policyid:
+                type: string
               scheme:
                 type: string
               syncStatus:

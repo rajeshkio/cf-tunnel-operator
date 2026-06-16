@@ -430,28 +430,28 @@ func (c *Client) UpdateAccessPolicies(ctx context.Context, appId, hostname, deci
 	return nil
 }
 
-func (c *Client) EnsureAccessPolicy(ctx context.Context, appId, hostname, decision string, emails []string) error {
+func (c *Client) EnsureAccessPolicy(ctx context.Context, appId, hostname, decision string, emails []string) (string, error) {
 	policies, err := c.ListAccessPolicies(ctx, appId)
 	if err != nil {
-		return fmt.Errorf("failed to list access policies: %w", err)
+		return "", fmt.Errorf("failed to list access policies: %w", err)
 	}
 	for _, policy := range policies {
 		if policy.Name == "cto-"+hostname {
 			err = c.UpdateAccessPolicies(ctx, appId, hostname, decision, policy.ID, emails)
 			if err != nil {
-				return fmt.Errorf("failed to update the policy %s: %w", policy.ID, err)
+				return "", fmt.Errorf("failed to update the policy %s: %w", policy.ID, err)
 			}
 			slog.Info("access policy updated", "hostname", hostname, "appID", appId, "policyID", policy.ID)
-			return nil
+			return policy.ID, nil
 		}
 	}
 
 	policyId, err := c.CreateAccessPolicies(ctx, appId, hostname, decision, emails)
 	if err != nil {
-		return fmt.Errorf("Failed to create Access Policy: %w", err)
+		return "", fmt.Errorf("Failed to create Access Policy: %w", err)
 	}
 	slog.Info("access policy created", "hostname", hostname, "appID", appId, "policyID", policyId)
-	return nil
+	return policyId, nil
 }
 
 func (c *Client) DeleteDNSRecord(ctx context.Context, hostname string) error {

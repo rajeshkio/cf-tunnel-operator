@@ -205,6 +205,107 @@ kubectl get pods -n cf-tunnel-operator-system
 kubectl logs -n cf-tunnel-operator-system deploy/cf-tunnel-operator -f
 ```
 
+## Usage
+
+The operator watches **all HTTPRoutes across all namespaces** automatically. No annotations needed.
+
+Create an HTTPRoute as you normally would:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: my-app
+  namespace: default
+spec:
+  hostnames:
+    - my-app.example.com
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: my-gateway
+      namespace: my-namespace
+  rules:
+    - backendRefs:
+        - name: my-app-service
+          port: 8080
+```
+
+### Backend Scheme and TLS
+
+By default the operator builds `http://` service URLs. For backends that speak HTTPS (self-signed certs, internal TLS), use these annotations:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: my-app
+  namespace: default
+  annotations:
+    cf-tunnel-operator/backend-scheme: "https"
+    cf-tunnel-operator/no-tls-verify: "true"
+spec: ...
+```
+
+| Annotation                          | Values          | Default | Description                                       |
+| ----------------------------------- | --------------- | ------- | ------------------------------------------------- |
+| `cf-tunnel-operator/backend-scheme` | `http`, `https` | `http`  | Scheme used to connect to the backend service     |
+| `cf-tunnel-operator/no-tls-verify`  | `true`, `false` | `false` | Skip TLS certificate verification for the backend |
+
+The operator automatically adds this rule to your Cloudflare Tunnel:
+
+```
+hostname: my-app.example.com
+service:  http://my-app-service.default.svc.cluster.local:8080
+```
+
+### Zero Trust Access
+
+Add two annotations to lock a hostname behind Cloudflare Access. When the operator sees these, it creates an Access Application and an email-based allow policy in your Cloudflare account. Only users whose email addresses are in the policy can reach the service — everyone else sees a Cloudflare login page.
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: my-app
+  namespace: default
+  annotations:
+    cf-tunnel-operator/zero-trust: "true"
+    cf-tunnel-operator/zero-trust-emails: "user@example.com,another@example.com"
+spec:
+  hostnames:
+    - my-app.example.com
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: my-gateway
+      namespace: my-namespace
+  rules:
+    - backendRefs:
+        - name: my-app-service
+          port: 8080
+```
+
+```
+| Annotation                              |  Values         | Default | Description                                       |
+| ----------------------------------------| --------------- | ------- | ------------------------------------------------- |
+| `cf-tunnel-operator/zero-trust`         | `true`, `false  | `false` | Enable Cloudflare Access for this hostname        |
+| `cf-tunnel-operator/zero-trust-emails`  | `true`, `false` | `false` | Emails allowed through the Access policy.         |
+```
+
+When `zero-trust: "true"` is set, the operator:
+
+1. Creates a Cloudflare Access Application named after the hostname
+2. Creates an allow policy named `cto-<hostname>` with the specified emails in the `include` rule
+3. On every reconcile, updates the policy if the email list changes
+4. When the HTTPRoute is deleted, removes the Access Application from Cloudflare
+
+The Access Application and Policy IDs are stored in the `TunnelStatus` resource for visibility.
+
+> Requires `Access: Apps and Policies Write` permission on your Cloudflare API token.
+
+Delete the HTTPRoute and the tunnel rule along with application and policy is removed automatically.
+
 ## Observability: TunnelStatus
 
 The operator creates a `TunnelStatus` custom resource for every HTTPRoute it manages. These live in the operator namespace and show the current sync state without needing to open the Cloudflare dashboard or read logs.
@@ -242,15 +343,32 @@ status:
   syncStatus: Success
 ```
 
-| Field | Description |
-|---|---|
-| `hostname` | The public hostname registered in Cloudflare |
-| `backendService` | The internal service URL pushed to the tunnel |
-| `scheme` | `http` or `https` depending on the annotation |
-| `notlsverify` | Whether TLS verification is disabled for the backend |
-| `syncStatus` | `Success` or `Failed` |
-| `message` | Error detail if `syncStatus` is `Failed` |
-| `lastSyncTime` | When the last reconcile ran |
+For a Zero Trust-enabled route:
+
+```yaml
+status:
+  appid: aca224fa-43eb-4478-840b-cef99a751d7e
+  backendService: http://my-app.default.svc.cluster.local:8080
+  hostname: my-app.example.com
+  lastSyncTime: "2026-06-16T07:13:38Z"
+  message: ""
+  notlsverify: false
+  policyid: bcf0a040-feb2-43e7-99a7-ceea60530f53
+  scheme: http
+  syncStatus: Success
+```
+
+| Field            | Description                                          |
+| ---------------- | ---------------------------------------------------- |
+| `hostname`       | The public hostname registered in Cloudflare         |
+| `backendService` | The internal service URL pushed to the tunnel        |
+| `scheme`         | `http` or `https` depending on the annotation        |
+| `notlsverify`    | Whether TLS verification is disabled for the backend |
+| `syncStatus`     | `Success` or `Failed`                                |
+| `message`        | Error detail if `syncStatus` is `Failed`             |
+| `lastSyncTime`   | When the last reconcile ran                          |
+| `appid`          | Cloudflare Access Application ID (Zero Trust only)   |
+| `policyid`       | Cloudflare Access Policy ID (Zero Trust only)        |
 
 If `syncStatus` is `Failed`, the `message` field contains the error from the Cloudflare API or DNS call. Fix the underlying issue and the operator retries automatically.
 
@@ -259,63 +377,6 @@ To apply the CRD to a cluster that does not have it yet:
 ```bash
 kubectl apply -f deploy/crd/cf-tunnel-operator.rajesh-kumar.in_tunnelstatuses.yaml
 ```
-
-## Usage
-
-The operator watches **all HTTPRoutes across all namespaces** automatically. No annotations needed.
-
-Create an HTTPRoute as you normally would:
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: my-app
-  namespace: default
-spec:
-  hostnames:
-    - my-app.example.com
-  parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: my-gateway
-      namespace: my-namespace
-  rules:
-    - backendRefs:
-        - name: my-app-service
-          port: 8080
-```
-### Backend Scheme and TLS
-
-By default the operator builds `http://` service URLs. For backends that speak HTTPS (self-signed certs, internal TLS), use these annotations:
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: my-app
-  namespace: default
-  annotations:
-    cf-tunnel-operator/backend-scheme: "https"
-    cf-tunnel-operator/no-tls-verify: "true"
-spec:
-  ...
-```
-
-| Annotation | Values | Default | Description |
-|---|---|---|---|
-| `cf-tunnel-operator/backend-scheme` | `http`, `https` | `http` | Scheme used to connect to the backend service |
-| `cf-tunnel-operator/no-tls-verify` | `true`, `false` | `false` | Skip TLS certificate verification for the backend |
-
-
-The operator automatically adds this rule to your Cloudflare Tunnel:
-
-```
-hostname: my-app.example.com
-service:  http://my-app-service.default.svc.cluster.local:8080
-```
-
-Delete the HTTPRoute and the tunnel rule is removed automatically.
 
 ## Local Development
 
@@ -328,10 +389,20 @@ export CF_DNS_ZONE_ID=your-zone-id
 export CF_API_TOKEN=your-api-token
 export POD_NAMESPACE=cf-tunnel-operator-system
 
-go run main.go
+make run
 ```
 
 `POD_NAMESPACE` is injected automatically via the Kubernetes Downward API when running in the cluster. For local runs you set it manually — it controls which namespace TunnelStatus resources are created in.
+
+### Makefile Targets
+
+| Target                   | Description                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| `make build `            | Compile the operator binary                                                          |
+| `make run`               | Run the operator locally using `KUBECONFIG` env var                                  |
+| `make generate-crd`      | Run controller-gen and copy CRD to both `deploy/crd/` and `cf-tunnel-operator/crds/` |
+| `make generate-deepcopy` | Regenerate DeepCopy methods after changing API types                                 |
+| `make deploy-crd`        | Apply CRD to cluster using `KUBECONFIG` env var                                      |
 
 To test the Cloudflare API client in isolation:
 
@@ -360,8 +431,10 @@ docker buildx build \
 
 ## Roadmap
 
-- [x] Opt-in annotation (`cloudflare-tunnel/enabled: "true"`) for selective management
+- [x] Opt-in Zero Trust Access via annotations
 - [ ] Support for multiple hostnames per HTTPRoute
 - [ ] TLSRoute support
 - [x] Automatic DNS CNAME record creation
 - [x] Helm chart
+- [x] TunnelStatus CRD for observability
+- [x] Cloudflare rate limit handling with automatic backoff

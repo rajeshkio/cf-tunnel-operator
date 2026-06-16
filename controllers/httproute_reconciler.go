@@ -27,16 +27,6 @@ type HTTPRouteReconciler struct {
 	OperatorNamespace string
 }
 
-type TunnelStatusInput struct {
-	Hostname     string
-	Service      string
-	Scheme       string
-	NoTLSVerify  bool
-	SyncStatus   string
-	Message      string
-	LastSyncTime metav1.Time
-}
-
 func handleRateLimit(err error) (ctrl.Result, bool) {
 	if errors.Is(err, cf.ErrRateLimited) {
 		return ctrl.Result{RequeueAfter: 20 * time.Second}, true
@@ -213,7 +203,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Both tunnel and DNS are in sync, nothing to do
 	if dnsUpToDate && tunnelUpToDate {
-		err = r.ensureZeroTrust(ctx, route, hostname)
+		appId, policyId, err := r.ensureZeroTrust(ctx, route, hostname)
 		if err != nil {
 			if result, ok := handleRateLimit(err); ok {
 				return result, nil
@@ -222,14 +212,16 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, err
 		}
 		log.Info("No changes detected, skipping", "hostname", hostname)
-		err = r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
-			Hostname:     hostname,
-			Service:      service,
-			NoTLSVerify:  backendAnnotationTLS,
-			Scheme:       backendAnnotationScheme,
-			LastSyncTime: metav1.Now(),
-			SyncStatus:   "Success",
-			Message:      "",
+		err = r.upsertTunnelStatus(ctx, route, v1alpha1.TunnelStatusStatus{
+			Hostname:       hostname,
+			BackendService: service,
+			NoTLSVerify:    backendAnnotationTLS,
+			Scheme:         backendAnnotationScheme,
+			LastSyncTime:   metav1.Now(),
+			SyncStatus:     "Success",
+			Message:        "",
+			AccessAppID:    appId,
+			AccessPolicyID: policyId,
 		})
 		if err != nil {
 			log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
@@ -267,14 +259,14 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				return result, nil
 			}
 			log.Error(err, "Failed to update tunnel config", "route", req.NamespacedName)
-			if upsertErr := r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
-				Hostname:     hostname,
-				Service:      service,
-				NoTLSVerify:  backendAnnotationTLS,
-				Scheme:       backendAnnotationScheme,
-				LastSyncTime: metav1.Now(),
-				SyncStatus:   "Failed",
-				Message:      err.Error(),
+			if upsertErr := r.upsertTunnelStatus(ctx, route, v1alpha1.TunnelStatusStatus{
+				Hostname:       hostname,
+				BackendService: service,
+				NoTLSVerify:    backendAnnotationTLS,
+				Scheme:         backendAnnotationScheme,
+				LastSyncTime:   metav1.Now(),
+				SyncStatus:     "Failed",
+				Message:        err.Error(),
 			}); upsertErr != nil {
 				log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
 			}
@@ -288,14 +280,14 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return result, nil
 		}
 		log.Error(err, "failed to add DNS record", "hostname", hostname)
-		if upsertErr := r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
-			Hostname:     hostname,
-			Service:      service,
-			NoTLSVerify:  backendAnnotationTLS,
-			Scheme:       backendAnnotationScheme,
-			LastSyncTime: metav1.Now(),
-			SyncStatus:   "Failed",
-			Message:      err.Error(),
+		if upsertErr := r.upsertTunnelStatus(ctx, route, v1alpha1.TunnelStatusStatus{
+			Hostname:       hostname,
+			BackendService: service,
+			NoTLSVerify:    backendAnnotationTLS,
+			Scheme:         backendAnnotationScheme,
+			LastSyncTime:   metav1.Now(),
+			SyncStatus:     "Failed",
+			Message:        err.Error(),
 		}); upsertErr != nil {
 			log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
 		}
@@ -303,7 +295,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	log.Info("DNS record ensured", "hostname", hostname)
-	err = r.ensureZeroTrust(ctx, route, hostname)
+	appId, policyId, err := r.ensureZeroTrust(ctx, route, hostname)
 	if err != nil {
 		if result, ok := handleRateLimit(err); ok {
 			return result, nil
@@ -312,14 +304,16 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	err = r.upsertTunnelStatus(ctx, route, TunnelStatusInput{
-		Hostname:     hostname,
-		Service:      service,
-		NoTLSVerify:  backendAnnotationTLS,
-		Scheme:       backendAnnotationScheme,
-		LastSyncTime: metav1.Now(),
-		SyncStatus:   "Success",
-		Message:      "",
+	err = r.upsertTunnelStatus(ctx, route, v1alpha1.TunnelStatusStatus{
+		Hostname:       hostname,
+		BackendService: service,
+		NoTLSVerify:    backendAnnotationTLS,
+		Scheme:         backendAnnotationScheme,
+		LastSyncTime:   metav1.Now(),
+		SyncStatus:     "Success",
+		Message:        "",
+		AccessAppID:    appId,
+		AccessPolicyID: policyId,
 	})
 
 	if err != nil {
@@ -329,7 +323,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gatewayv1.HTTPRoute, hostname string) error {
+func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gatewayv1.HTTPRoute, hostname string) (string, string, error) {
 	zeroTrustAnnotation := false
 	var err error
 	log := ctrl.LoggerFrom(ctx)
@@ -337,10 +331,12 @@ func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gateway
 		zeroTrustAnnotation, err = strconv.ParseBool(route.Annotations["cf-tunnel-operator/zero-trust"])
 		if err != nil {
 			log.Error(err, "failed to convert", route.Annotations["cf-tunnel-operator/zero-trust"])
-			return err
+			return "", "", err
 		}
 	}
 	var zeroTrustEmails []string
+	var appId string
+	var policyId string
 	if zeroTrustAnnotation {
 		if route.Annotations["cf-tunnel-operator/zero-trust-emails"] != "" {
 			emailsRaw := route.Annotations["cf-tunnel-operator/zero-trust-emails"]
@@ -349,18 +345,18 @@ func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gateway
 				zeroTrustEmails = append(zeroTrustEmails, strings.TrimSpace(email))
 			}
 		}
-		appId, err := r.CF.EnsureAccessApplication(ctx, hostname)
+		appId, err = r.CF.EnsureAccessApplication(ctx, hostname)
 		if err != nil {
 			log.Error(err, "failed to create Access application", hostname)
-			return err
+			return "", "", err
 		}
-		err = r.CF.EnsureAccessPolicy(ctx, appId, hostname, "allow", zeroTrustEmails)
+		policyId, err = r.CF.EnsureAccessPolicy(ctx, appId, hostname, "allow", zeroTrustEmails)
 		if err != nil {
 			log.Error(err, "failed to create access policy:", appId)
-			return err
+			return "", "", err
 		}
 	}
-	return nil
+	return appId, policyId, nil
 }
 func containsFinalizer(finalizers []string, name string) bool {
 	return slices.Contains(finalizers, name)
@@ -379,7 +375,7 @@ func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).For(&gatewayv1.HTTPRoute{}).Complete(r)
 }
 
-func (r *HTTPRouteReconciler) upsertTunnelStatus(ctx context.Context, route gatewayv1.HTTPRoute, tunnelStatusInput TunnelStatusInput) error {
+func (r *HTTPRouteReconciler) upsertTunnelStatus(ctx context.Context, route gatewayv1.HTTPRoute, tunnelStatusInput v1alpha1.TunnelStatusStatus) error {
 	log := ctrl.LoggerFrom(ctx)
 	tsResource := &v1alpha1.TunnelStatus{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s", route.Namespace, route.Name), Namespace: r.OperatorNamespace}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, tsResource, func() error {
@@ -393,12 +389,14 @@ func (r *HTTPRouteReconciler) upsertTunnelStatus(ctx context.Context, route gate
 	}
 
 	tsResource.Status.Hostname = tunnelStatusInput.Hostname
-	tsResource.Status.BackendService = tunnelStatusInput.Service
+	tsResource.Status.BackendService = tunnelStatusInput.BackendService
 	tsResource.Status.LastSyncTime = tunnelStatusInput.LastSyncTime
 	tsResource.Status.NoTLSVerify = tunnelStatusInput.NoTLSVerify
 	tsResource.Status.Scheme = tunnelStatusInput.Scheme
 	tsResource.Status.SyncStatus = tunnelStatusInput.SyncStatus
 	tsResource.Status.Message = tunnelStatusInput.Message
+	tsResource.Status.AccessAppID = tunnelStatusInput.AccessAppID
+	tsResource.Status.AccessPolicyID = tunnelStatusInput.AccessPolicyID
 	if err := r.Status().Update(ctx, tsResource); err != nil {
 		log.Error(err, "Failed to update TunnelStatus status")
 		return err

@@ -21,6 +21,8 @@ type TunnelStatusStatus struct {
 	Scheme         string      `json:"scheme"`
 	NoTLSVerify    bool        `json:"notlsverify"`
 	Message        string      `json:"message"`
+	AccessAppID    string      `json:"appid,omitempty"`
+	AccessPolicyID string      `json:"policyid,omitempty"`
 }
 
 type TunnelStatusSpec struct {
