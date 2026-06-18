@@ -19,6 +19,10 @@ spec:
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }} 
           imagePullPolicy: Always
           env:
+            - name: CF_SYNC_INTERVAL
+              value: {{ .Values.syncInterval | quote }}
+            - name: CF_SESSION_DURATION
+              value: {{ .Values.sessionDuration | quote }}
             - name: CF_ACCOUNT_ID
               valueFrom:
                 secretKeyRef:
