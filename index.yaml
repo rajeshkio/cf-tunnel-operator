@@ -2,6 +2,16 @@ apiVersion: v1
 entries:
   cf-tunnel-operator:
   - apiVersion: v2
+    appVersion: v0.1.8
+    created: "2026-06-18T07:45:23.677268084Z"
+    description: this chart deploys cf-tunnel-operator. The operator manages the cloudflare
+      app that automates and manages cloudflare tunnel and DNS entries.
+    digest: 27c4cfb5c1e3dd30ad1c75561a84a43d6d36a1fa4840b58d74b0156a00952cc6
+    name: cf-tunnel-operator
+    urls:
+    - https://github.com/rajeshkio/cf-tunnel-operator/releases/download/cf-tunnel-operator-0.1.8/cf-tunnel-operator-0.1.8.tgz
+    version: 0.1.8
+  - apiVersion: v2
     appVersion: v0.1.7
     created: "2026-06-17T12:01:07.294487312Z"
     description: this chart deploys cf-tunnel-operator. The operator manages the cloudflare
@@ -61,4 +71,4 @@ entries:
     urls:
     - https://github.com/rajeshkio/cf-tunnel-operator/releases/download/cf-tunnel-operator-0.1.2/cf-tunnel-operator-0.1.2.tgz
     version: 0.1.2
-generated: "2026-06-17T12:01:07.294511638Z"
+generated: "2026-06-18T07:45:23.677298051Z"
