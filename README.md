@@ -2,6 +2,16 @@
 
 A Kubernetes operator that automatically manages Cloudflare Tunnel routing rules based on HTTPRoute resources in your cluster. No more manual dashboard updates every time you deploy a new service.
 
+## Articles
+
+This operator was built as a learning exercise. The full series documents the decisions, mistakes, and concepts encountered while building it:
+
+1. [How to Set Up Cloudflare Tunnel on Kubernetes — and How It Actually Works Inside](https://blogs.learningdevops.com/how-to-set-up-cloudflare-tunnel-on-kubernetes-and-how-it-actually-works-inside-91e11a35c84c)
+2. [Building a Kubernetes Operator from Scratch — Automate Cloudflare Tunnel with HTTPRoute](https://blogs.learningdevops.com/building-a-kubernetes-operator-from-scratch-automate-cloudflare-tunnel-with-httproute-421d6642dc11)
+3. [controller-gen — Building a Custom Kubernetes CRD Without Kubebuilder](https://blogs.learningdevops.com/controller-gen-building-a-custom-kubernetes-crd-without-kubebuilder-6c8f1e809150)
+4. [Securing Every Service Using Cloudflare Zero Trust — Without Touching the Dashboard](https://blogs.learningdevops.com/securing-every-service-using-cloudflare-zero-trust-without-touching-the-dashboard-f80c6b28fff2)
+
+
 ## The Problem
 
 Running services in a home lab or private Kubernetes cluster on Proxmox has a fundamental networking problem:
