@@ -1,4 +1,10 @@
 # cf-tunnel-operator
+![Build](https://github.com/rajeshkio/cf-tunnel-operator/actions/workflows/build.yaml/badge.svg)
+![Chart Release](https://github.com/rajeshkio/cf-tunnel-operator/actions/workflows/chart-release.yaml/badge.svg)
+![Go Version](https://img.shields.io/badge/go-1.25.3-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+[![Docker](https://img.shields.io/badge/docker-rk90229%2Fcf--tunnel--operator-blue?logo=docker)](https://hub.docker.com/r/rk90229/cf-tunnel-operator)
+[![Helm](https://img.shields.io/badge/helm-chart-blue?logo=helm)](https://rajeshkio.github.io/cf-tunnel-operator)
 
 A Kubernetes operator that automatically manages Cloudflare Tunnel routing rules based on HTTPRoute resources in your cluster. No more manual dashboard updates every time you deploy a new service.
 
