@@ -30,11 +30,12 @@ type DNSRecordRequests struct {
 }
 
 type AccessApplication struct {
-	ID          string              `json:"id,omitempty"`
-	Name        string              `json:"name"`
-	Domain      string              `json:"domain"`
-	Type        string              `json:"type"`
-	Destination []AccessDestination `json:"destinations"`
+	ID              string              `json:"id,omitempty"`
+	Name            string              `json:"name"`
+	Domain          string              `json:"domain"`
+	Type            string              `json:"type"`
+	Destination     []AccessDestination `json:"destinations"`
+	SessionDuration string              `json:"session_duration,omitempty"`
 }
 
 type AccessDestination struct {

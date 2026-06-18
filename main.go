@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/rajeshkio/cf-tunnel-operator/api/v1alpha1"
 	"github.com/rajeshkio/cf-tunnel-operator/controllers"
@@ -27,13 +28,32 @@ func main() {
 	apiToken := os.Getenv("CF_API_TOKEN")
 	zoneID := os.Getenv("CF_DNS_ZONE_ID")
 	operatorNamespace := os.Getenv("POD_NAMESPACE")
+	accessApplicationDuration := os.Getenv("CF_SESSION_DURATION")
+	autoSyncInterval := os.Getenv("CF_SYNC_INTERVAL")
 
 	if accountID == "" || tunnelID == "" || apiToken == "" || zoneID == "" || operatorNamespace == "" {
 		fmt.Println("Error: Please set CF_ACCOUNT_ID, CF_TUNNEL_ID, CF_API_TOKEN, CF_DNS_ZONE_ID", "POD_NAMESPACE")
 		os.Exit(1)
 	}
 
-	cfClient := cf.NewClient(accountID, tunnelID, apiToken, zoneID)
+	if accessApplicationDuration == "" {
+		accessApplicationDuration = "24h"
+	}
+
+	var syncDuration time.Duration
+	var err error
+
+	if autoSyncInterval == "" {
+		syncDuration = time.Hour
+	} else {
+		syncDuration, err = time.ParseDuration(autoSyncInterval)
+		if err != nil {
+			fmt.Println("invalid CF_SYNC_INTERVAL, using default 1h:", err)
+			syncDuration = time.Hour
+		}
+	}
+
+	cfClient := cf.NewClient(accountID, tunnelID, apiToken, zoneID, accessApplicationDuration)
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 	})
@@ -46,6 +66,7 @@ func main() {
 		Client:            mgr.GetClient(),
 		CF:                cfClient,
 		OperatorNamespace: operatorNamespace,
+		AutoSyncInterval:  syncDuration,
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {
 		fmt.Println("Failed to setup reconciler: ", err)

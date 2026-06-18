@@ -25,6 +25,7 @@ type HTTPRouteReconciler struct {
 	client.Client
 	CF                *cf.Client
 	OperatorNamespace string
+	AutoSyncInterval  time.Duration
 }
 
 func handleRateLimit(err error) (ctrl.Result, bool) {
@@ -96,7 +97,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					return result, nil
 				}
 				log.Error(err, "Failed to check DNS record", "hostname", hostname)
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{}, err
 			}
 			if dnsRecord != nil {
 				if err := r.CF.DeleteDNSRecord(ctx, hostname); err != nil {
@@ -104,7 +105,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 						return result, nil
 					}
 					log.Error(err, "Failed to delete DNS record", "hostname", hostname)
-					return ctrl.Result{Requeue: true}, nil
+					return ctrl.Result{}, err
 				}
 				log.Info("DNS record deleted", "hostname", hostname)
 			} else {
@@ -117,7 +118,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 						return result, nil
 					}
 					log.Error(err, "Failed to delete access application", "hostname", hostname)
-					return ctrl.Result{Requeue: true}, nil
+					return ctrl.Result{}, err
 				}
 				log.Info("Access Application Deleted", "hostname", hostname)
 			}
@@ -196,7 +197,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return result, nil
 		}
 		log.Error(err, "Failed to check DNS record", "hostname", hostname)
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, err
 	}
 
 	dnsUpToDate := dnsRecord != nil
@@ -227,7 +228,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: r.AutoSyncInterval}, nil
 	}
 
 	// Tunnel rule is missing or outdated, rebuild and push
@@ -291,7 +292,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}); upsertErr != nil {
 			log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
 		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, err
 	}
 
 	log.Info("DNS record ensured", "hostname", hostname)
@@ -320,7 +321,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Error(err, "Failed to upsert TunnelStatus", "route", req.NamespacedName)
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: r.AutoSyncInterval}, nil
 }
 
 func (r *HTTPRouteReconciler) ensureZeroTrust(ctx context.Context, route gatewayv1.HTTPRoute, hostname string) (string, string, error) {

@@ -13,13 +13,14 @@ func main() {
 	tunnelID := os.Getenv("CF_TUNNEL_ID")
 	apiToken := os.Getenv("CF_API_TOKEN")
 	zoneID := os.Getenv("CF_DNS_ZONE_ID")
+	accessApplicationDuration := os.Getenv("CF_SESSION_DURATION")
 
 	if accountID == "" || tunnelID == "" || apiToken == "" {
 		fmt.Println("Error: please set CF_ACCOUNT_ID, CF_TUNNEL_ID, CF_API_TOKEN")
 		os.Exit(1)
 	}
 
-	client := cloudflare.NewClient(accountID, tunnelID, apiToken, zoneID)
+	client := cloudflare.NewClient(accountID, tunnelID, apiToken, zoneID, accessApplicationDuration)
 	ctx := context.Background()
 
 	fmt.Println("Fetching tunnel config")

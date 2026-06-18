@@ -16,20 +16,22 @@ const apiBase = "https://api.cloudflare.com/client/v4"
 var ErrRateLimited = fmt.Errorf("cloudflare rate limited")
 
 type Client struct {
-	accountID string
-	tunnelID  string
-	apiToken  string
-	http      *http.Client
-	zoneID    string
+	accountID                 string
+	tunnelID                  string
+	apiToken                  string
+	http                      *http.Client
+	zoneID                    string
+	accessApplicationDuration string
 }
 
-func NewClient(accountID, tunnelID, apiToken, zoneID string) *Client {
+func NewClient(accountID, tunnelID, apiToken, zoneID, accessApplicationDuration string) *Client {
 	return &Client{
-		accountID: accountID,
-		tunnelID:  tunnelID,
-		apiToken:  apiToken,
-		http:      &(http.Client{Timeout: 30 * time.Second}),
-		zoneID:    zoneID,
+		accountID:                 accountID,
+		tunnelID:                  tunnelID,
+		apiToken:                  apiToken,
+		http:                      &(http.Client{Timeout: 30 * time.Second}),
+		zoneID:                    zoneID,
+		accessApplicationDuration: accessApplicationDuration,
 	}
 }
 
@@ -231,6 +233,7 @@ func (c *Client) CreateAccessApplication(ctx context.Context, name string) (stri
 				URI:  name,
 			},
 		},
+		SessionDuration: c.accessApplicationDuration,
 	}
 
 	payloadByte, err := json.Marshal(payload)
