@@ -43,20 +43,7 @@ Browser
 
 ## How It Works
 
-```
-HTTPRoute created / updated / deleted
-              ↓
-   Operator reconcile triggered
-              ↓
-   GET current config from Cloudflare API
-              ↓
-   Compare desired state vs actual state
-              ↓
-   No change?  → skip (no unnecessary API calls)
-   Different?  → PUT updated config to Cloudflare API
-              ↓
-   cloudflared picks up new rules automatically
-```
+![Architecture](cf-tunnel-operator-arch.svg)
 
 ### Deletion Safety
 
