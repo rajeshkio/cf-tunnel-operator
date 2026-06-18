@@ -349,7 +349,17 @@ func (c *Client) EnsureDNSRecord(ctx context.Context, hostname string) error {
 		slog.Info("DNS record created", "hostname", hostname)
 		return nil
 	}
-	slog.Info("DNS record already exists", "hostname", hostname)
+	expectedDNSContent := c.tunnelID + ".cfargotunnel.com"
+	if dnsRecord.Content == expectedDNSContent {
+		slog.Info("DNS record already exists and is correct", "hostname", hostname)
+		return nil
+	}
+
+	if err := c.UpdateDNSRecords(ctx, hostname, dnsRecord.Id); err != nil {
+		return fmt.Errorf("failed to update the DNS record: %w", err)
+	}
+
+	slog.Info("DNS record updated", "hostname", hostname)
 	return nil
 
 }
@@ -430,6 +440,56 @@ func (c *Client) UpdateAccessPolicies(ctx context.Context, appId, hostname, deci
 		return fmt.Errorf("cloudflare API error: %v", apiResult.Errors)
 	}
 	//fmt.Println(apiResult.Result)
+	return nil
+}
+
+func (c *Client) UpdateDNSRecords(ctx context.Context, hostname, dnsRecordID string) error {
+	url := fmt.Sprintf("%s/zones/%s/dns_records/%s", apiBase, c.zoneID, dnsRecordID)
+	payload := &DNSRecordRequests{
+		Name:    hostname,
+		Type:    "CNAME",
+		TTL:     1,
+		Content: c.tunnelID + ".cfargotunnel.com",
+		Proxied: true,
+	}
+	payloadByte, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(payloadByte))
+	if err != nil {
+		return fmt.Errorf("building DNS record request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("PATCH DNS records: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading response: %w", err)
+	}
+
+	var apiResult struct {
+		apiResponse
+	}
+
+	err = json.Unmarshal(body, &apiResult)
+	if err != nil {
+		return fmt.Errorf("Failed to unmarshal the api response: %w", err)
+	}
+	if !apiResult.Success {
+		if isRateLimited(apiResult.Errors) {
+			return ErrRateLimited
+		}
+		return fmt.Errorf("cloudflare API error: %v", apiResult.Errors)
+	}
 	return nil
 }
 
