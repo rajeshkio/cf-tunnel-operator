@@ -130,7 +130,7 @@ kubectl create secret generic cf-tunnel-operator-credentials \
 #### 3. Install the chart
 
 ```bash
-helm install cf-tunnel-operator cf-tunnel-operator/cf-tunnel-operator
+helm upgrade --install cf-tunnel-operator cf-tunnel-operator/cf-tunnel-operator -n cf-tunnel-operator-system
 ```
 
 #### 4. Verify
