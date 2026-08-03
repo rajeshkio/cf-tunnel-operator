@@ -1,0 +1,26 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    cf-tunnel-operator/zero-trust: "true"
+    cf-tunnel-operator/zero-trust-emails: srk280392@gmail.com, rk90229@gmail.com
+  name: test1-httproute
+spec:
+  hostnames:
+    - tes1.rajesh-kumar.in
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: common-server-gateway
+      namespace: common-gateway
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: test
+          port: 8200
+          weight: 1
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
