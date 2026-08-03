@@ -79,3 +79,4 @@ func main() {
 		os.Exit(1)
 	}
 }
+// ci: trigger workflow test
