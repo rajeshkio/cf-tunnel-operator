@@ -16,7 +16,7 @@ spec:
       serviceAccountName: cf-tunnel-operator
       containers:
         - name: operator
-          image: rk90229/cf-tunnel-operator:main-dc794aa
+          image: rk90229/cf-tunnel-operator:main-162dcff
           imagePullPolicy: Always
           env:
             - name: CF_ACCOUNT_ID

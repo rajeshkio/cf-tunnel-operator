@@ -1,6 +1,6 @@
 image:
   repository: docker.io/rk90229/cf-tunnel-operator
-  tag: main-dc794aa
+  tag: main-162dcff
 namespace: cf-tunnel-operator-system
 credentialsSecret: cf-tunnel-operator-credentials
 serviceAccount:
