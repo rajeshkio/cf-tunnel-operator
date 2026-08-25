@@ -134,7 +134,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if route.Annotations["cf-tunnel-operator/skip"] == "true" {
-		log.Info("Skip annotation set, not managing route", "route", req.NamespacedName)
+		log.Info("Skip annotation is set, not managing this route", "route", req.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 
