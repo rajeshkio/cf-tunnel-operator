@@ -24,6 +24,11 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version: '1.26'
+          cache: false
+      - name: Show go version
+        run: go version
+      - name: Show go env
+        run: go env GOTOOLCHAIN GOFLAGS GOPROXY GOSUMDB
 
       - name: Run govulncheck
         run: |
