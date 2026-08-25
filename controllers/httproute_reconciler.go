@@ -133,6 +133,11 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	}
 
+	if route.Annotations["cf-tunnel-operator/skip"] == "true" {
+		log.Info("Skip annotation set, not managing route", "route", req.NamespacedName)
+		return ctrl.Result{}, nil
+	}
+
 	if !containsFinalizer(route.Finalizers, finalizer) {
 		log.Info("Adding finalizer", "route", req.NamespacedName)
 		route.Finalizers = append(route.Finalizers, finalizer)
